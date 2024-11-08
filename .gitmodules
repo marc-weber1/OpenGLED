@@ -1,3 +1,6 @@
 [submodule "external/rpi_ws281x"]
 	path = external/rpi_ws281x
 	url = https://github.com/jgarff/rpi_ws281x.git
+[submodule "external/yaml-cpp"]
+	path = external/yaml-cpp
+	url = https://github.com/jbeder/yaml-cpp.git

@@ -4,6 +4,7 @@
 #include <unistd.h>
 
 #include "ws2811.h"
+#include "yaml-cpp/yaml.h"
 
 #define DMA 10
 #define GPIO_PIN 12
@@ -49,9 +50,11 @@ using namespace std;
 
 int main(int argc, char* argv[]){
 
-  ws2811_return_t ret;
-
   setup_handlers();
+
+  YAML::Node config = YAML::LoadFile("../example-config.yaml");
+
+  ws2811_return_t ret;
 
   if((ret = ws2811_init(&ledstring)) != WS2811_SUCCESS){
     cerr << "ws2811_init failed: " << ws2811_get_return_t_str(ret) << "\n";
