@@ -1,4 +1,5 @@
 #include <iostream>
+#include <vector>
 #include <stdint.h>
 #include <csignal>
 #include <unistd.h>
@@ -9,7 +10,7 @@
 #define DMA 10
 #define GPIO_PIN 12
 #define LED_COUNT 144
-#define STRIP_TYPE WS2811_STRIP_GBR // 00 GG BB RR
+#define STRIP_TYPE WS2811_STRIP_GBR // 00 BB GG RR
 
 ws2811_t ledstring =
 {
