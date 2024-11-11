@@ -5,7 +5,8 @@
 #include <unistd.h>
 
 #include "ws2811.h"
-#include "yaml-cpp/yaml.h"
+#include "OpenGLEDConfig.h"
+#include "RaspiHeadlessOpenGLContext.h"
 
 #define DMA 10
 #define GPIO_PIN 12
@@ -53,11 +54,24 @@ int main(int argc, char* argv[]){
 
   setup_handlers();
 
-  YAML::Node config = YAML::LoadFile("../example-config.yaml");
+  optional<OpenGLEDConfig> maybe_config = OpenGLEDConfig::FromFile("../example-config.yaml");
+  if(!maybe_config.has_value()){
+    cerr << "Failed to parse config file.\n";
+    return 1;
+  }
+  OpenGLEDConfig config = maybe_config.value();
+
+  RaspiHeadlessOpenGLContext context = RaspiHeadlessOpenGLContext(144, 1);
+  if(!context.Initialize()){
+    cerr << "Failed to create a headless OpenGL context.\n";
+    return 1;
+  }
+
+  context.MakeCurrent();
 
   ws2811_return_t ret;
 
-  if((ret = ws2811_init(&ledstring)) != WS2811_SUCCESS){
+  /*if((ret = ws2811_init(&ledstring)) != WS2811_SUCCESS){
     cerr << "ws2811_init failed: " << ws2811_get_return_t_str(ret) << "\n";
     return ret;
   }
@@ -76,7 +90,7 @@ int main(int argc, char* argv[]){
     usleep(1000000 / 15);
   }
 
-  ws2811_fini(&ledstring);
+  ws2811_fini(&ledstring);*/
 
   cout << "\n";
 

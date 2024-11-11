@@ -12,7 +12,7 @@ add_subdirectory(external/yaml-cpp)
 
 project(OpenGLED VERSION 0.1.0)
 
-add_executable(open_gled src/main.cpp)
+add_executable(open_gled src/main.cpp src/OpenGLEDConfig.cpp src/RaspiHeadlessOpenGLContext.cpp)
 target_include_directories(open_gled PRIVATE include)
 
 target_include_directories(open_gled PRIVATE external/rpi_ws281x)
