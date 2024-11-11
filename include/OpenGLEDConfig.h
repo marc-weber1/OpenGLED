@@ -11,6 +11,7 @@ class OpenGLEDConfig
 public:
     // LED settings
     int dma = 10, gpio_pin = 18, width = 0, height = 0;
+    uint8_t brightness = 32;
     std::string shader_folder;
 
     static std::optional<OpenGLEDConfig> FromFile(const char* filename);

@@ -15,9 +15,6 @@
 #include "RaspiHeadlessOpenGLContext.h"
 #include "Shader.h"
 
-#define STB_IMAGE_WRITE_IMPLEMENTATION
-#include "stb_image_write.h"
-
 #define STRIP_TYPE WS2811_STRIP_GBR // 00 BB GG RR
 
 const GLfloat FULLSCREEN_BOX_VEC2[] = {
@@ -108,7 +105,7 @@ int main(int argc, char* argv[]){
     if(file.path().extension() == ".fs"){
 
       string shaderCode = read_file(file.path());
-      shaders.emplace_back(DEFAULT_VERTEX_SHADER, shaderCode.c_str());
+      shaders.emplace_back(DEFAULT_VERTEX_SHADER, shaderCode.c_str()); // Have to be careful with copies since the shader destroys on deconstruct
       
     }
   }
@@ -134,12 +131,12 @@ int main(int argc, char* argv[]){
 
   // Get uniforms
 
-  //clock_t clock_start = clock();
-  //GLint timeLoc = glGetUniformLocation(shaders[current_shader].ID, "time"); // Also do this for the other shaders
+  clock_t clock_start = clock();
+  GLint timeLoc = glGetUniformLocation(shaders[current_shader].ID, "time"); // Also do this for the other shaders
 
   // Setup buffer to copy pixel data to LEDs
 
-  unique_ptr<char[]> buffer(new char[config.width * config.height * 3]);
+  vector<char> buffer(config.width * config.height * 3);
 
   // Setup LED strip
 
@@ -155,7 +152,7 @@ int main(int argc, char* argv[]){
         .invert = 0,
         .count = config.width * config.height,
         .strip_type = STRIP_TYPE,
-        .brightness = 255,
+        .brightness = config.brightness,
       },
       [1] =
       {
@@ -169,30 +166,32 @@ int main(int argc, char* argv[]){
 
   ws2811_return_t ret;
 
-  /*if((ret = ws2811_init(&ledstring)) != WS2811_SUCCESS){
+  if((ret = ws2811_init(&ledstring)) != WS2811_SUCCESS){
     cerr << "ws2811_init failed: " << ws2811_get_return_t_str(ret) << "\n";
     return ret;
-  }*/
+  }
 
-  //while(running){
+  while(running){
 
     // Run a draw call w the shader
 
-    //glUniform1f(timeLoc, (GLfloat) (clock() - clock_start)/CLOCKS_PER_SEC);
+    //cout << "Time: " << (GLfloat) (clock() - clock_start)/CLOCKS_PER_SEC << "\n";
+    glUniform1f(timeLoc, (GLfloat) (clock() - clock_start)/CLOCKS_PER_SEC);
 
     glDrawArrays(GL_TRIANGLES, 0, 6);
 
     // Copy to buffer
 
-    glReadPixels(0, 0, config.width, config.height, GL_RGB, GL_UNSIGNED_BYTE, buffer.get());
-
-    // Write all pixels to file (temporary)
-    int success = stbi_write_png("test.png", config.width, config.height, 3, buffer.get(), config.width * 3);
+    glReadPixels(0, 0, config.width, config.height, GL_RGB, GL_UNSIGNED_BYTE, buffer.data());
 
     // Copy from buffer to LEDs
 
-    /*for(int x = 0; x < config.width; x++){
-      ledstring.channel[0].leds[x] = 0x00202000; // cyan
+    for(int y = 0; y < config.height; y++){
+      for(int x = 0; x < config.width; x++){
+        char* pixel = &buffer[(y * config.width + x) * 3];
+        
+        ledstring.channel[0].leds[y * config.width + x] = (pixel[2] << 16) | (pixel[1] << 8) | pixel[0];
+      }
     }
 
     if((ret = ws2811_render(&ledstring)) != WS2811_SUCCESS){
@@ -200,11 +199,11 @@ int main(int argc, char* argv[]){
       break;
     }
 
-    // 15 frames / s
-    usleep(1000000 / 15);*/
-  //}
+    // 15 frames / s  (NOT how frame timing works ...)
+    //usleep(1000000 / 15);
+  }
 
-  //ws2811_fini(&ledstring);
+  ws2811_fini(&ledstring);
 
   cout << "\n";
 
