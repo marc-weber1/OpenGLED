@@ -8,34 +8,7 @@
 #include "OpenGLEDConfig.h"
 #include "RaspiHeadlessOpenGLContext.h"
 
-#define DMA 10
-#define GPIO_PIN 12
-#define LED_COUNT 144
 #define STRIP_TYPE WS2811_STRIP_GBR // 00 BB GG RR
-
-ws2811_t ledstring =
-{
-  .freq = WS2811_TARGET_FREQ,
-  .dmanum = DMA,
-  .channel =
-  {
-    [0] =
-    {
-      .gpionum = GPIO_PIN,
-      .invert = 0,
-      .count = LED_COUNT,
-      .strip_type = STRIP_TYPE,
-      .brightness = 255,
-    },
-    [1] =
-    {
-      .gpionum = 0,
-      .invert = 0,
-      .count = 0,
-      .brightness = 0,
-    },
-  },
-};
 
 static uint8_t running = 1;
 
@@ -61,7 +34,7 @@ int main(int argc, char* argv[]){
   }
   OpenGLEDConfig config = maybe_config.value();
 
-  RaspiHeadlessOpenGLContext context = RaspiHeadlessOpenGLContext(144, 1);
+  RaspiHeadlessOpenGLContext context = RaspiHeadlessOpenGLContext(config.width, config.height);
   if(!context.Initialize()){
     cerr << "Failed to create a headless OpenGL context.\n";
     return 1;
@@ -71,13 +44,37 @@ int main(int argc, char* argv[]){
 
   ws2811_return_t ret;
 
-  /*if((ret = ws2811_init(&ledstring)) != WS2811_SUCCESS){
+  ws2811_t ledstring =
+  {
+    .freq = WS2811_TARGET_FREQ,
+    .dmanum = config.dma,
+    .channel =
+    {
+      [0] =
+      {
+        .gpionum = config.gpio_pin,
+        .invert = 0,
+        .count = config.width * config.height,
+        .strip_type = STRIP_TYPE,
+        .brightness = 255,
+      },
+      [1] =
+      {
+        .gpionum = 0,
+        .invert = 0,
+        .count = 0,
+        .brightness = 0,
+      },
+    },
+  };
+
+  if((ret = ws2811_init(&ledstring)) != WS2811_SUCCESS){
     cerr << "ws2811_init failed: " << ws2811_get_return_t_str(ret) << "\n";
     return ret;
   }
 
   while(running){
-    for(int x = 0; x < LED_COUNT; x++){
+    for(int x = 0; x < config.width; x++){
       ledstring.channel[0].leds[x] = 0x00202000; // cyan
     }
 
@@ -90,7 +87,7 @@ int main(int argc, char* argv[]){
     usleep(1000000 / 15);
   }
 
-  ws2811_fini(&ledstring);*/
+  ws2811_fini(&ledstring);
 
   cout << "\n";
 

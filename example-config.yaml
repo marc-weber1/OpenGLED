@@ -3,3 +3,5 @@ LED_SETTINGS:
   GPIO_PIN: 12
   WIDTH: 144
   HEIGHT: 1
+
+SHADER_FOLDER: ../shaders
