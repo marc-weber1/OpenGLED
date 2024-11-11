@@ -108,7 +108,7 @@ int main(int argc, char* argv[]){
     if(file.path().extension() == ".fs"){
 
       string shaderCode = read_file(file.path());
-      shaders.push_back(Shader(DEFAULT_VERTEX_SHADER, shaderCode.c_str()));
+      shaders.emplace_back(DEFAULT_VERTEX_SHADER, shaderCode.c_str());
       
     }
   }
@@ -130,8 +130,7 @@ int main(int argc, char* argv[]){
 
   GLint posLoc = glGetAttribLocation(shaders[current_shader].ID, "pos"); // Also do this for the other shaders
   glEnableVertexAttribArray(posLoc);
-  glVertexAttribPointer(posLoc, 2, GL_FLOAT, GL_FALSE, 2 * sizeof(float),
-                        (void *)0);
+  glVertexAttribPointer(posLoc, 2, GL_FLOAT, GL_FALSE, 2 * sizeof(float), (void *)0);
 
   // Get uniforms
 
