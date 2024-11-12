@@ -10,6 +10,7 @@
 #include <unistd.h>
 
 #include <GLES2/gl2.h>
+#include "ALSADevices.hpp"
 
 #include "ws2811.h"
 #include "OpenGLEDConfig.h"
@@ -154,6 +155,16 @@ int main(int argc, char* argv[]){
   timespec clock_start;
   clock_gettime(CLOCK_MONOTONIC, &clock_start);
   GLint timeLoc = glGetUniformLocation(shaders[current_shader].ID, "time"); // Also do this for the other shaders
+
+  // Setup microphone processing
+  if(config.alsa_input_device != ""){
+    int frames_per_period = 64;
+    ALSACaptureDevice microphone(config.alsa_input_device, 16000, 1, 64, SND_PCM_FORMAT_S16_BE);
+    microphone.open();
+    char* buffer = microphone.allocate_buffer();
+    microphone.capture_into_buffer(buffer, 64);
+    microphone.close();
+  }
 
   // Setup buffer to copy pixel data to LEDs
 

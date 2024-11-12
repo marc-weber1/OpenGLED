@@ -13,7 +13,8 @@ public:
     int dma = 10, gpio_pin = 18, width = 0, height = 0;
     float gamma_correction = 1.0;
     uint8_t brightness = 32;
-    std::string shader_folder;
+
+    std::string shader_folder, alsa_input_device;
 
     static std::optional<OpenGLEDConfig> FromFile(const char* filename);
 };
