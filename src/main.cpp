@@ -68,6 +68,11 @@ std::string read_file(fs::path filepath){
   return shaderCode;
 }
 
+float seconds_elapsed(timespec start, timespec end){
+  long ns_elapsed = (end.tv_sec - start.tv_sec) * 1000000000L + (end.tv_nsec - start.tv_nsec);
+  return (float) ns_elapsed / 1000000000.f;
+}
+
 int main(int argc, char* argv[]){
 
   // Handle ctrl C
@@ -107,7 +112,7 @@ int main(int argc, char* argv[]){
 
       string shaderCode = read_file(file.path());
 
-      if(config.gamma_correction != 1.0){
+      /*if(config.gamma_correction != 1.0){
         // Hotpatch the fragment shader with gamma correction:
         //  e.g. gl_FragColor = pow(gl_FragColor, vec4(1.7, 1.7, 1.7, 1));
         regex fragment_main_function_regex("void\\s+main\\s*\\(\\s*\\)\\s*\\{([^\\}]*)\\}");
@@ -118,7 +123,7 @@ int main(int argc, char* argv[]){
           + ",1));\n}");
 
         cout << shaderCode << "\n"; // debug
-      }
+      }*/
 
       shaders.emplace_back(DEFAULT_VERTEX_SHADER, shaderCode.c_str()); // Have to be careful with copies since the shader destroys on deconstruct
       
@@ -146,7 +151,8 @@ int main(int argc, char* argv[]){
 
   // Get uniforms
 
-  clock_t clock_start = clock();
+  timespec clock_start;
+  clock_gettime(CLOCK_MONOTONIC, &clock_start);
   GLint timeLoc = glGetUniformLocation(shaders[current_shader].ID, "time"); // Also do this for the other shaders
 
   // Setup buffer to copy pixel data to LEDs
@@ -191,7 +197,9 @@ int main(int argc, char* argv[]){
     // Run a draw call w the shader
 
     //cout << "Time: " << (GLfloat) (clock() - clock_start)/CLOCKS_PER_SEC << "\n";
-    glUniform1f(timeLoc, (GLfloat) (clock() - clock_start)/CLOCKS_PER_SEC);
+    timespec clock_now;
+    clock_gettime(CLOCK_MONOTONIC, &clock_now);
+    glUniform1f(timeLoc, (GLfloat) seconds_elapsed(clock_start, clock_now));
 
     glDrawArrays(GL_TRIANGLES, 0, 6);
 
