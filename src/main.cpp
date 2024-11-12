@@ -3,6 +3,7 @@
 #include <set>
 #include <memory>
 #include <filesystem>
+#include <regex>
 #include <ctime>
 #include <stdint.h>
 #include <csignal>
@@ -105,6 +106,20 @@ int main(int argc, char* argv[]){
     if(file.path().extension() == ".fs"){
 
       string shaderCode = read_file(file.path());
+
+      if(config.gamma_correction != 1.0){
+        // Hotpatch the fragment shader with gamma correction:
+        //  e.g. gl_FragColor = pow(gl_FragColor, vec4(1.7, 1.7, 1.7, 1));
+        regex fragment_main_function_regex("void\\s+main\\s*\\(\\s*\\)\\s*\\{([^\\}]*)\\}");
+        shaderCode = regex_replace(shaderCode, fragment_main_function_regex, "void main(){$1\n\tgl_FragColor = pow(gl_FragColor, vec4("
+          + to_string(config.gamma_correction)
+          + "," + to_string(config.gamma_correction)
+          + "," + to_string(config.gamma_correction)
+          + ",1));\n}");
+
+        cout << shaderCode << "\n"; // debug
+      }
+
       shaders.emplace_back(DEFAULT_VERTEX_SHADER, shaderCode.c_str()); // Have to be careful with copies since the shader destroys on deconstruct
       
     }

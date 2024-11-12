@@ -10,6 +10,7 @@ std::optional<OpenGLEDConfig> OpenGLEDConfig::FromFile(const char* filename)
     return_config.width = config["LED_SETTINGS"]["WIDTH"].as<int>();
     return_config.height = config["LED_SETTINGS"]["HEIGHT"].as<int>();
     return_config.brightness = config["LED_SETTINGS"]["BRIGHTNESS"].as<uint8_t>();
+    return_config.gamma_correction = config["LED_SETTINGS"]["GAMMA_CORRECTION"].as<float>();
 
     return_config.shader_folder = config["SHADER_FOLDER"].as<std::string>();
 
