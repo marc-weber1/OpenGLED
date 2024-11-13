@@ -19,6 +19,9 @@
 
 #define STRIP_TYPE WS2811_STRIP_GBR // 00 BB GG RR
 
+const int AUDIO_BUFFER_SIZE = 256;
+const int AUDIO_SAMPLE_RATE = 44100;
+
 const GLfloat FULLSCREEN_BOX_VEC2[] = {
   -1, -1,
   1, 1,
@@ -88,6 +91,17 @@ int main(int argc, char* argv[]){
   }
   OpenGLEDConfig config = maybe_config.value();
 
+  // Setup microphone processing
+
+  unique_ptr<ALSACaptureDevice> microphone;
+  char* microphone_buffer;
+
+  if(config.alsa_input_device != ""){
+    microphone = make_unique<ALSACaptureDevice>(config.alsa_input_device, AUDIO_SAMPLE_RATE, 1, AUDIO_BUFFER_SIZE, SND_PCM_FORMAT_S16_LE);
+    microphone_buffer = microphone->allocate_buffer();
+    microphone->open();
+  }
+
   // Create OpenGL context
 
   RaspiHeadlessOpenGLContext context = RaspiHeadlessOpenGLContext(config.width, config.height);
@@ -156,16 +170,6 @@ int main(int argc, char* argv[]){
   clock_gettime(CLOCK_MONOTONIC, &clock_start);
   GLint timeLoc = glGetUniformLocation(shaders[current_shader].ID, "time"); // Also do this for the other shaders
 
-  // Setup microphone processing
-  if(config.alsa_input_device != ""){
-    int frames_per_period = 64;
-    ALSACaptureDevice microphone(config.alsa_input_device, 16000, 1, 64, SND_PCM_FORMAT_S16_BE);
-    microphone.open();
-    char* buffer = microphone.allocate_buffer();
-    microphone.capture_into_buffer(buffer, 64);
-    microphone.close();
-  }
-
   // Setup buffer to copy pixel data to LEDs
 
   vector<char> buffer(config.width * config.height * 3);
@@ -207,6 +211,10 @@ int main(int argc, char* argv[]){
 
     // Run a draw call w the shader
 
+    /*if(microphone){ // This uses the SAME PWM MODULE AS PIN 12 I'M GONNA KMS
+      microphone->capture_into_buffer(microphone_buffer, AUDIO_BUFFER_SIZE);
+    }*/
+
     //cout << "Time: " << (GLfloat) (clock() - clock_start)/CLOCKS_PER_SEC << "\n";
     timespec clock_now;
     clock_gettime(CLOCK_MONOTONIC, &clock_now);
@@ -238,6 +246,11 @@ int main(int argc, char* argv[]){
   }
 
   ws2811_fini(&ledstring);
+
+  if(microphone){
+    microphone->close();
+    free(microphone_buffer);
+  }
 
   cout << "\n";
 

@@ -6,4 +6,4 @@
 	url = https://github.com/jbeder/yaml-cpp.git
 [submodule "external/ALSA.CPP"]
 	path = external/ALSA.CPP
-	url = https://github.com/TheSalarKhan/ALSA.CPP.git
+	url = https://github.com/marc-weber1/ALSA.CPP.git
