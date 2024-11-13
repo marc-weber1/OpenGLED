@@ -20,7 +20,7 @@
 #define STRIP_TYPE WS2811_STRIP_GBR // 00 BB GG RR
 
 const int AUDIO_BUFFER_SIZE = 256;
-const int AUDIO_SAMPLE_RATE = 44100;
+const int AUDIO_SAMPLE_RATE = 16000;
 
 const GLfloat FULLSCREEN_BOX_VEC2[] = {
   -1, -1,
@@ -211,9 +211,9 @@ int main(int argc, char* argv[]){
 
     // Run a draw call w the shader
 
-    /*if(microphone){ // This uses the SAME PWM MODULE AS PIN 12 I'M GONNA KMS
+    if(microphone){
       microphone->capture_into_buffer(microphone_buffer, AUDIO_BUFFER_SIZE);
-    }*/
+    }
 
     //cout << "Time: " << (GLfloat) (clock() - clock_start)/CLOCKS_PER_SEC << "\n";
     timespec clock_now;
