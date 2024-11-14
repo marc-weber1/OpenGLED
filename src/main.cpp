@@ -19,9 +19,6 @@
 
 #define STRIP_TYPE WS2811_STRIP_GBR // 00 BB GG RR
 
-const int AUDIO_BUFFER_SIZE = 256;
-const int AUDIO_SAMPLE_RATE = 16000;
-
 const GLfloat FULLSCREEN_BOX_VEC2[] = {
   -1, -1,
   1, 1,
@@ -97,7 +94,7 @@ int main(int argc, char* argv[]){
   char* microphone_buffer;
 
   if(config.alsa_input_device != ""){
-    microphone = make_unique<ALSACaptureDevice>(config.alsa_input_device, AUDIO_SAMPLE_RATE, 1, AUDIO_BUFFER_SIZE, SND_PCM_FORMAT_S16_LE);
+    microphone = make_unique<ALSACaptureDevice>(config.alsa_input_device, config.sample_rate, 1, config.samples_per_pixel, SND_PCM_FORMAT_S16_LE);
     microphone_buffer = microphone->allocate_buffer();
     microphone->open();
   }
@@ -212,7 +209,9 @@ int main(int argc, char* argv[]){
     // Run a draw call w the shader
 
     if(microphone){
-      microphone->capture_into_buffer(microphone_buffer, AUDIO_BUFFER_SIZE);
+      while(microphone->samples_left_to_read() >= config.samples_per_pixel){
+        microphone->capture_into_buffer(microphone_buffer, config.samples_per_pixel);
+      }
     }
 
     //cout << "Time: " << (GLfloat) (clock() - clock_start)/CLOCKS_PER_SEC << "\n";
@@ -232,6 +231,7 @@ int main(int argc, char* argv[]){
       for(int x = 0; x < config.width; x++){
         char* pixel = &buffer[(y * config.width + x) * 3];
         
+        // Convert a pixel e.g. 0xRRGGBB into 0x00BBGGRR
         ledstring.channel[0].leds[y * config.width + x] = (pixel[2] << 16) | (pixel[1] << 8) | pixel[0];
       }
     }
