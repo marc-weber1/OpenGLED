@@ -1,6 +1,8 @@
 uniform float time;
+uniform vec2 resolution;
+uniform sampler2D audioTexture;
 
 void main() {
-    float v = (sin(time * gl_FragCoord.x / 3.0) + 1.0)/2.0;
-    gl_FragColor = vec4(v, 0, 0, 1);
+    float bass_intensity = texture2D(audioTexture, vec2(gl_FragCoord.x / resolution.x, 0)).x;
+    gl_FragColor = vec4( bass_intensity, 0, 0, 1);
 }

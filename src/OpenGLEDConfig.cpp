@@ -35,14 +35,17 @@ std::optional<OpenGLEDConfig> OpenGLEDConfig::FromFile(const char* filename)
             }
         }
 
+        if(config["AUDIO_SETTINGS"]["CHANNELS"])
+            return_config.channels = config["AUDIO_SETTINGS"]["CHANNELS"].as<int>();
+
         if(config["AUDIO_SETTINGS"]["SAMPLE_RATE"])
             return_config.sample_rate = config["AUDIO_SETTINGS"]["SAMPLE_RATE"].as<int>();
 
         if(config["AUDIO_SETTINGS"]["SAMPLES_PER_PIXEL"])
             return_config.samples_per_pixel = config["AUDIO_SETTINGS"]["SAMPLES_PER_PIXEL"].as<int>();
 
-        if(config["AUDIO_SETTINGS"]["PIXELS_PER_IMAGE"])
-            return_config.pixels_per_image = config["AUDIO_SETTINGS"]["PIXELS_PER_IMAGE"].as<int>();
+        if(config["AUDIO_SETTINGS"]["PIXELS_PER_BAND"])
+            return_config.pixels_per_band = config["AUDIO_SETTINGS"]["PIXELS_PER_BAND"].as<int>();
     }
 
     return_config.shader_folder = config["SHADER_FOLDER"].as<std::string>();

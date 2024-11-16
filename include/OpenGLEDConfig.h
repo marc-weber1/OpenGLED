@@ -20,7 +20,11 @@ public:
     // Audio settings
     std::string alsa_input_device;
     std::vector<float> frequency_bands;
-    int sample_rate = 44100, samples_per_pixel = 1024, pixels_per_image = 144;
+    int channels = 1, sample_rate = 44100, samples_per_pixel = 1024, pixels_per_band = 144;
+
+    int num_bands(){ return frequency_bands.size() - 1; }
+    float center_frequency(int band){ return frequency_bands[band] + (frequency_bands[band+1] - frequency_bands[band]) / 2.f; }
+    float band_width(int band){ return frequency_bands[band+1] - frequency_bands[band]; }
 
     static std::optional<OpenGLEDConfig> FromFile(const char* filename);
 };

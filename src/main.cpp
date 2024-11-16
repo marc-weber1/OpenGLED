@@ -8,6 +8,7 @@
 #include <stdint.h>
 #include <csignal>
 #include <unistd.h>
+#include <math.h>
 
 #include <GLES2/gl2.h>
 #include "ALSADevices.hpp"
@@ -16,10 +17,12 @@
 #include "RaspiHeadlessOpenGLContext.h"
 #include "Iir.h"
 
+#include "CircularBuffer.h"
 #include "OpenGLEDConfig.h"
 #include "Shader.h"
 
 #define STRIP_TYPE WS2811_STRIP_GBR // 00 BB GG RR
+#define FILTER_ORDER 4
 
 const GLfloat FULLSCREEN_BOX_VEC2[] = {
   -1, -1,
@@ -76,6 +79,15 @@ float seconds_elapsed(timespec start, timespec end){
   return (float) ns_elapsed / 1000000000.f;
 }
 
+float convertS16LEToFloat(const char sample[2]) {
+    // Step 1: Combine the two bytes into a signed 16-bit integer
+    int16_t intSample = (static_cast<int16_t>(static_cast<uint8_t>(sample[1])) << 8) |
+                        static_cast<uint8_t>(sample[0]);
+
+    // Step 2: Normalize to the range [-1.0, 1.0]
+    return intSample / 32768.0f; // 32768 is 2^15, the maximum absolute value for int16_t
+}
+
 int main(int argc, char* argv[]){
 
   // Handle ctrl C
@@ -90,17 +102,6 @@ int main(int argc, char* argv[]){
   }
   OpenGLEDConfig config = maybe_config.value();
 
-  // Setup microphone processing
-
-  unique_ptr<ALSACaptureDevice> microphone;
-  char* microphone_buffer;
-
-  if(config.alsa_input_device != ""){
-    microphone = make_unique<ALSACaptureDevice>(config.alsa_input_device, config.sample_rate, 1, config.samples_per_pixel, SND_PCM_FORMAT_S16_LE);
-    microphone_buffer = microphone->allocate_buffer();
-    microphone->open();
-  }
-
   // Create OpenGL context
 
   RaspiHeadlessOpenGLContext context = RaspiHeadlessOpenGLContext(config.width, config.height);
@@ -110,6 +111,36 @@ int main(int argc, char* argv[]){
   }
 
   context.MakeCurrent();
+
+  // Setup microphone processing
+
+  unique_ptr<ALSACaptureDevice> microphone;
+  vector<char> microphone_buffer;
+
+  vector<Iir::Butterworth::BandPass<FILTER_ORDER>> band_filters;
+  vector<float> filtered_samples;
+  vector<CircularBuffer<unsigned char>> band_pixel_buffers;
+  vector<unsigned char> audio_reactive_texture_data;
+  GLuint audio_reactive_texture;
+
+  if(config.alsa_input_device != ""){
+    microphone = make_unique<ALSACaptureDevice>(config.alsa_input_device, config.sample_rate, 1, config.samples_per_pixel, SND_PCM_FORMAT_S16_LE);
+    microphone_buffer.resize(microphone->get_bytes_per_frame() * microphone->get_frames_per_period());
+    microphone->open();
+
+    for(int band = 0; band < config.num_bands(); band++){
+      band_filters.emplace_back();
+      band_filters[band].setup(config.sample_rate, config.center_frequency(band), config.band_width(band));
+      band_pixel_buffers.emplace_back(config.pixels_per_band);
+    }
+
+    filtered_samples.resize(config.samples_per_pixel);
+    audio_reactive_texture_data.resize(config.pixels_per_band * config.num_bands(), 0);
+
+    glGenTextures(1, &audio_reactive_texture);
+    glBindTexture(GL_TEXTURE_2D, audio_reactive_texture); // This needs to be called every time if you use any other texture
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+  }
 
   // Clear whole screen (front buffer)
 
@@ -169,9 +200,13 @@ int main(int argc, char* argv[]){
   clock_gettime(CLOCK_MONOTONIC, &clock_start);
   GLint timeLoc = glGetUniformLocation(shaders[current_shader].ID, "time"); // Also do this for the other shaders
 
+  // Do this whole thing on shader initialization
+  GLint resolutionLoc = glGetUniformLocation(shaders[current_shader].ID, "resolution");
+  glUniform2f(resolutionLoc, (GLfloat) config.width, (GLfloat) config.height);
+
   // Setup buffer to copy pixel data to LEDs
 
-  vector<char> buffer(config.width * config.height * 3);
+  vector<char> led_buffer(config.width * config.height * 3);
 
   // Setup LED strip
 
@@ -208,30 +243,61 @@ int main(int argc, char* argv[]){
 
   while(running){
 
-    // Run a draw call w the shader
+    // Calculate shader audio texture
 
     if(microphone){
-      while(microphone->samples_left_to_read() >= config.samples_per_pixel){
-        microphone->capture_into_buffer(microphone_buffer, config.samples_per_pixel);
+      microphone->capture_into_buffer(microphone_buffer.data(), config.samples_per_pixel);
+
+      cout << "Copied " << config.samples_per_pixel << "\n";
+
+      for(int band = 0; band < config.num_bands(); band++){
+        // Filter current buffer
+        for(int s = 0; s < config.samples_per_pixel; s++){
+          // S16_LE one channel -> float  !! ASSUMES ONE CHANNEL
+          filtered_samples[s] = convertS16LEToFloat(microphone_buffer.data() + 2*s);
+          // Filter
+          filtered_samples[s] = band_filters[band].filter(filtered_samples[s]);
+        }
+
+        // Calculate brightness of next pixel from db RMS
+        double sum = 0;
+        for(int s = 0; s < config.samples_per_pixel; s++){
+          sum += filtered_samples[s] * filtered_samples[s];
+        }
+        double rms = sqrt(sum / config.samples_per_pixel) * 100.0; // Temporary pregain thingy
+
+        cout << "band " << band << ": " << rms << "\n";
+
+        band_pixel_buffers.push_back((unsigned char) (rms * 255.5)); // .5 so it rounds correctly
+
+        // Copy the band data to the audio reactive texture
+        band_pixel_buffers[band].peek(audio_reactive_texture_data.data() + band * config.pixels_per_band, config.pixels_per_band);
       }
+
+      // Get audio reactive texture into the GPU
+      glTexImage2D(GL_TEXTURE_2D, 0, GL_LUMINANCE, config.pixels_per_band, config.num_bands(), 0, GL_LUMINANCE, GL_UNSIGNED_BYTE, audio_reactive_texture_data.data());
     }
+
+    // Shader uniforms
 
     //cout << "Time: " << (GLfloat) (clock() - clock_start)/CLOCKS_PER_SEC << "\n";
     timespec clock_now;
     clock_gettime(CLOCK_MONOTONIC, &clock_now);
     glUniform1f(timeLoc, (GLfloat) seconds_elapsed(clock_start, clock_now));
 
+    // Draw to virtual GBR
+
     glDrawArrays(GL_TRIANGLES, 0, 6);
 
     // Copy to buffer
 
-    glReadPixels(0, 0, config.width, config.height, GL_RGB, GL_UNSIGNED_BYTE, buffer.data());
+    glReadPixels(0, 0, config.width, config.height, GL_RGB, GL_UNSIGNED_BYTE, led_buffer.data());
 
     // Copy from buffer to LEDs
 
     for(int y = 0; y < config.height; y++){
       for(int x = 0; x < config.width; x++){
-        char* pixel = &buffer[(y * config.width + x) * 3];
+        char* pixel = &led_buffer[(y * config.width + x) * 3];
         
         // Convert a pixel e.g. 0xRRGGBB into 0x00BBGGRR
         ledstring.channel[0].leds[y * config.width + x] = (pixel[2] << 16) | (pixel[1] << 8) | pixel[0];
@@ -251,7 +317,6 @@ int main(int argc, char* argv[]){
 
   if(microphone){
     microphone->close();
-    free(microphone_buffer);
   }
 
   cout << "\n";
