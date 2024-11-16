@@ -13,8 +13,10 @@
 #include "ALSADevices.hpp"
 
 #include "ws2811.h"
-#include "OpenGLEDConfig.h"
 #include "RaspiHeadlessOpenGLContext.h"
+#include "Iir.h"
+
+#include "OpenGLEDConfig.h"
 #include "Shader.h"
 
 #define STRIP_TYPE WS2811_STRIP_GBR // 00 BB GG RR

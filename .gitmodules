@@ -7,3 +7,6 @@
 [submodule "external/ALSA.CPP"]
 	path = external/ALSA.CPP
 	url = https://github.com/marc-weber1/ALSA.CPP.git
+[submodule "external/iir1"]
+	path = external/iir1
+	url = https://github.com/berndporr/iir1.git
