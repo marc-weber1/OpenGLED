@@ -19,10 +19,11 @@ public:
     // members
     CircularBuffer(int capacity)
     {
-        this->capacity = capacity;
+        // If you want to get the last C items you pushed, you need a capacity of C + 1
+        this->capacity = capacity + 1;
         this->head = 0;
         this->tail = 0;
-        buffer.resize(capacity);
+        buffer.resize(capacity + 1);
     }
 
     // Function to add an element to the buffer
@@ -52,13 +53,13 @@ public:
         //   1.2  3.5  7.8  1.3  6.5  1.4
         //   ^         ^
         //   h=0       t=2
-        // then, if number = 5:
+        // then, if number = 5, and typeof(T) is char:
         // memcpy(write_to, buffer.data() + 2, 4);
         // memcpy(write_to + 4, buffer.data(), 1);
         int num_to_copy_first = std::max(number, capacity - tail);
         int num_to_copy_second = std::max(0, number - (capacity - tail));
-        std::memcpy(write_to, buffer.data() + tail, num_to_copy_first);
-        if(num_to_copy_second > 0) std::memcpy(write_to + num_to_copy_first, buffer.data(), num_to_copy_second);
+        std::memcpy(write_to, buffer.data() + tail, num_to_copy_first * sizeof(T));
+        if(num_to_copy_second > 0) std::memcpy(write_to + num_to_copy_first, buffer.data(), num_to_copy_second * sizeof(T));
 
         return number;
     }
