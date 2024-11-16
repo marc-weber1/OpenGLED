@@ -268,7 +268,7 @@ int main(int argc, char* argv[]){
 
         cout << "band " << band << ": " << rms << "\n";
 
-        band_pixel_buffers.push_back((unsigned char) (rms * 255.5)); // .5 so it rounds correctly
+        band_pixel_buffers[band].push_back((unsigned char) (rms * 255.5)); // .5 so it rounds correctly
 
         // Copy the band data to the audio reactive texture
         band_pixel_buffers[band].peek(audio_reactive_texture_data.data() + band * config.pixels_per_band, config.pixels_per_band);
