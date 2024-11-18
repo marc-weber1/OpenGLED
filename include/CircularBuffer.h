@@ -19,7 +19,7 @@ public:
     // members
     CircularBuffer(int capacity)
     {
-        // If you want to get the last C items you pushed, you need a capacity of C + 1
+        // If you want to get the last C items you pushed, you need a capacity of C + 1 since head doesn't count
         this->capacity = capacity + 1;
         this->head = 0;
         this->tail = 0;
@@ -50,13 +50,20 @@ public:
     int peek(T* write_to, int number){
         if(number > size()) number = size();
         // e.g.
-        //   1.2  3.5  7.8  1.3  6.5  1.4
-        //   ^         ^
-        //   h=0       t=2
-        // then, if number = 5, and typeof(T) is char:
-        // memcpy(write_to, buffer.data() + 2, 4);
-        // memcpy(write_to + 4, buffer.data(), 1);
-        int num_to_copy_first = std::max(number, capacity - tail);
+        //   1.2  0.0  0.0  0.0  0.0  0.0
+        //   ^    ^
+        //   t=0  h=1
+        // then, if number = 1 and typeof(T) is char:
+        // memcpy(write_to, buffer.data() + 0, 1);
+        // e.g. 2
+        //   1.7  1.3  1.4  1.5  1.6
+        //        ^    ^
+        //        h=1  t=2
+        // then, if number = 4, and typeof(T) is char:
+        // memcpy(write_to, buffer.data() + 2, 3);
+        // memcpy(write_to + 3, buffer.data(), 1);
+
+        int num_to_copy_first = std::min(number, capacity - tail);
         int num_to_copy_second = std::max(0, number - (capacity - tail));
         std::memcpy(write_to, buffer.data() + tail, num_to_copy_first * sizeof(T));
         if(num_to_copy_second > 0) std::memcpy(write_to + num_to_copy_first, buffer.data(), num_to_copy_second * sizeof(T));

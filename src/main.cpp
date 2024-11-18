@@ -248,8 +248,6 @@ int main(int argc, char* argv[]){
     if(microphone){
       microphone->capture_into_buffer(microphone_buffer.data(), config.samples_per_pixel);
 
-      cout << "Copied " << config.samples_per_pixel << "\n";
-
       for(int band = 0; band < config.num_bands(); band++){
         // Filter current buffer
         for(int s = 0; s < config.samples_per_pixel; s++){
@@ -264,7 +262,7 @@ int main(int argc, char* argv[]){
         for(int s = 0; s < config.samples_per_pixel; s++){
           sum += filtered_samples[s] * filtered_samples[s];
         }
-        double rms = sqrt(sum / config.samples_per_pixel) * 100.0; // Temporary pregain thingy
+        double rms = sqrt(sum / config.samples_per_pixel) * 20.0; // Temporary pregain thingy
 
         cout << "band " << band << ": " << rms << "\n";
 
