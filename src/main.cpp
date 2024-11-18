@@ -246,30 +246,32 @@ int main(int argc, char* argv[]){
     // Calculate shader audio texture
 
     if(microphone){
-      microphone->capture_into_buffer(microphone_buffer.data(), config.samples_per_pixel);
+      while(microphone->samples_left_to_read() > config.samples_per_pixel){
+        microphone->capture_into_buffer(microphone_buffer.data(), config.samples_per_pixel);
 
-      for(int band = 0; band < config.num_bands(); band++){
-        // Filter current buffer
-        for(int s = 0; s < config.samples_per_pixel; s++){
-          // S16_LE one channel -> float  !! ASSUMES ONE CHANNEL
-          filtered_samples[s] = convertS16LEToFloat(microphone_buffer.data() + 2*s);
-          // Filter
-          filtered_samples[s] = band_filters[band].filter(filtered_samples[s]);
+        for(int band = 0; band < config.num_bands(); band++){
+          // Filter current buffer
+          for(int s = 0; s < config.samples_per_pixel; s++){
+            // S16_LE one channel -> float  !! ASSUMES ONE CHANNEL
+            filtered_samples[s] = convertS16LEToFloat(microphone_buffer.data() + 2*s);
+            // Filter
+            filtered_samples[s] = band_filters[band].filter(filtered_samples[s]);
+          }
+
+          // Calculate brightness of next pixel from db RMS
+          double sum = 0;
+          for(int s = 0; s < config.samples_per_pixel; s++){
+            sum += filtered_samples[s] * filtered_samples[s];
+          }
+          double rms = sqrt(sum / config.samples_per_pixel) * 10.0; // Temporary pregain thingy
+
+          //cout << "band " << band << ": " << rms << "\n";
+
+          band_pixel_buffers[band].push_back((unsigned char) (rms * 255.5)); // .5 so it rounds correctly
+
+          // Copy the band data to the audio reactive texture
+          band_pixel_buffers[band].peek(audio_reactive_texture_data.data() + band * config.pixels_per_band, config.pixels_per_band);
         }
-
-        // Calculate brightness of next pixel from db RMS
-        double sum = 0;
-        for(int s = 0; s < config.samples_per_pixel; s++){
-          sum += filtered_samples[s] * filtered_samples[s];
-        }
-        double rms = sqrt(sum / config.samples_per_pixel) * 20.0; // Temporary pregain thingy
-
-        cout << "band " << band << ": " << rms << "\n";
-
-        band_pixel_buffers[band].push_back((unsigned char) (rms * 255.5)); // .5 so it rounds correctly
-
-        // Copy the band data to the audio reactive texture
-        band_pixel_buffers[band].peek(audio_reactive_texture_data.data() + band * config.pixels_per_band, config.pixels_per_band);
       }
 
       // Get audio reactive texture into the GPU
