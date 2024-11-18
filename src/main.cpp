@@ -263,11 +263,12 @@ int main(int argc, char* argv[]){
           for(int s = 0; s < config.samples_per_pixel; s++){
             sum += filtered_samples[s] * filtered_samples[s];
           }
-          double rms = sqrt(sum / config.samples_per_pixel) * 10.0; // Temporary pregain thingy
+          // This rms measurement seems to just be garbage data? not correlated with the volume at all
+          double rms_db = log(sqrt(sum / config.samples_per_pixel) * 20.0) + 1.0; // 20.0 is temporary pregain
 
           //cout << "band " << band << ": " << rms << "\n";
 
-          band_pixel_buffers[band].push_back((unsigned char) (rms * 255.5)); // .5 so it rounds correctly
+          band_pixel_buffers[band].push_back((unsigned char) (rms_db * 255.5)); // .5 so it rounds correctly
 
           // Copy the band data to the audio reactive texture
           band_pixel_buffers[band].peek(audio_reactive_texture_data.data() + band * config.pixels_per_band, config.pixels_per_band);
