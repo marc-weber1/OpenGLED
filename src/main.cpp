@@ -246,7 +246,7 @@ int main(int argc, char* argv[]){
     // Calculate shader audio texture
 
     if(microphone){
-      while(microphone->samples_left_to_read() > config.samples_per_pixel){
+      while(microphone->samples_left_to_read() >= config.samples_per_pixel){
         microphone->capture_into_buffer(microphone_buffer.data(), config.samples_per_pixel);
 
         for(int band = 0; band < config.num_bands(); band++){
