@@ -16,6 +16,9 @@
 #include "ws2811.h"
 #include "RaspiHeadlessOpenGLContext.h"
 #include "Iir.h"
+#include "args.h"
+#define DR_WAV_IMPLEMENTATION
+#include "dr_wav.h"
 
 #include "CircularBuffer.h"
 #include "OpenGLEDConfig.h"
@@ -90,6 +93,12 @@ float convertS16LEToFloat(const char sample[2]) {
 
 int main(int argc, char* argv[]){
 
+  // Check args to see if we are debugging or something
+  args::ArgParser arg_parser("Usage: open_gled [--debug-audio]", "1.0");
+  arg_parser.flag("debug-audio");
+
+  arg_parser.parse(argc, argv);
+
   // Handle ctrl C
   setup_handlers();
 
@@ -111,6 +120,15 @@ int main(int argc, char* argv[]){
   }
 
   context.MakeCurrent();
+
+  // Setup mic debugging
+
+  vector<char> wav_samples;
+  int buffers_written = 0;
+  if(arg_parser.found("debug-audio")){
+    cout << "Debugging audio..." << "\n";
+    wav_samples.resize(256 * config.samples_per_pixel * 4);
+  }
 
   // Setup microphone processing
 
@@ -248,6 +266,34 @@ int main(int argc, char* argv[]){
     if(microphone){
       while(microphone->samples_left_to_read() >= config.samples_per_pixel){
         microphone->capture_into_buffer(microphone_buffer.data(), config.samples_per_pixel);
+
+        // MIC DEBUGGING
+
+        if(arg_parser.found("debug-audio")){
+          for(int s=0; s < config.samples_per_pixel; s++){
+              float converted_sample = convertS16LEToFloat(microphone_buffer.data() + 2 * s);
+              memcpy(wav_samples.data() + 1024 * 4 * buffers_written + 4 * s, &converted_sample, 4);
+          }
+
+          buffers_written ++;
+
+          if(buffers_written == 256){
+            drwav_data_format format;
+            format.container = drwav_container_riff;     // <-- drwav_container_riff = normal WAV files, drwav_container_w64 = Sony Wave64.
+            format.format = DR_WAVE_FORMAT_IEEE_FLOAT;          // <-- Any of the DR_WAVE_FORMAT_* codes.
+            format.channels = 1;
+            format.sampleRate = 44100;
+            format.bitsPerSample = 32;
+
+            drwav wav;
+            drwav_init_file_write(&wav, "test.wav", &format, NULL);
+
+            drwav_uint64 framesWritten = drwav_write_pcm_frames(&wav, 256 * 1024, wav_samples.data());
+
+            microphone->close();
+            return 0;
+          }
+        }
 
         for(int band = 0; band < config.num_bands(); band++){
           // Filter current buffer
