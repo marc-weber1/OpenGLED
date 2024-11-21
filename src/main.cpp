@@ -290,6 +290,7 @@ int main(int argc, char* argv[]){
 
             drwav_uint64 framesWritten = drwav_write_pcm_frames(&wav, 256 * 1024, wav_samples.data());
 
+            ws2811_fini(&ledstring);
             microphone->close();
             return 0;
           }
