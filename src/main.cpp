@@ -4,6 +4,7 @@
 #include <memory>
 #include <filesystem>
 #include <regex>
+#include <string>
 #include <ctime>
 #include <stdint.h>
 #include <csignal>
@@ -123,11 +124,16 @@ int main(int argc, char* argv[]){
 
   // Setup mic debugging
 
+  const int NUM_FRAMES_TO_RECORD_DEBUG = 256;
   vector<char> wav_samples;
+  vector<vector<char>> wav_band_samples;
   int buffers_written = 0;
   if(arg_parser.found("debug-audio")){
     cout << "Debugging audio..." << "\n";
-    wav_samples.resize(256 * config.samples_per_pixel * 4);
+    wav_samples.resize(NUM_FRAMES_TO_RECORD_DEBUG * config.samples_per_pixel * 4);
+    for(int b = 0; b < config.num_bands(); b++){
+      wav_band_samples.emplace_back(NUM_FRAMES_TO_RECORD_DEBUG * config.samples_per_pixel * 4);
+    }
   }
 
   // Setup microphone processing
@@ -267,34 +273,7 @@ int main(int argc, char* argv[]){
       while(microphone->samples_left_to_read() >= config.samples_per_pixel){
         microphone->capture_into_buffer(microphone_buffer.data(), config.samples_per_pixel);
 
-        // MIC DEBUGGING
-
-        if(arg_parser.found("debug-audio")){
-          for(int s=0; s < config.samples_per_pixel; s++){
-              float converted_sample = convertS16LEToFloat(microphone_buffer.data() + 2 * s);
-              memcpy(wav_samples.data() + 1024 * 4 * buffers_written + 4 * s, &converted_sample, 4);
-          }
-
-          buffers_written ++;
-
-          if(buffers_written == 256){
-            drwav_data_format format;
-            format.container = drwav_container_riff;     // <-- drwav_container_riff = normal WAV files, drwav_container_w64 = Sony Wave64.
-            format.format = DR_WAVE_FORMAT_IEEE_FLOAT;          // <-- Any of the DR_WAVE_FORMAT_* codes.
-            format.channels = 1;
-            format.sampleRate = 44100;
-            format.bitsPerSample = 32;
-
-            drwav wav;
-            drwav_init_file_write(&wav, "test.wav", &format, NULL);
-
-            drwav_uint64 framesWritten = drwav_write_pcm_frames(&wav, 256 * 1024, wav_samples.data());
-
-            ws2811_fini(&ledstring);
-            microphone->close();
-            return 0;
-          }
-        }
+        // Filter mic signal into bands
 
         for(int band = 0; band < config.num_bands(); band++){
           // Filter current buffer
@@ -303,6 +282,11 @@ int main(int argc, char* argv[]){
             filtered_samples[s] = convertS16LEToFloat(microphone_buffer.data() + 2*s);
             // Filter
             filtered_samples[s] = band_filters[band].filter(filtered_samples[s]);
+          }
+
+          // MIC DEBUGGING FOR BAND PROCESSING
+          if(arg_parser.found("debug-audio")){
+            memcpy(wav_band_samples[band].data() + config.samples_per_pixel * 4 * buffers_written, filtered_samples.data(), config.samples_per_pixel * 4);
           }
 
           // Calculate brightness of next pixel from db RMS
@@ -319,6 +303,40 @@ int main(int argc, char* argv[]){
 
           // Copy the band data to the audio reactive texture
           band_pixel_buffers[band].peek(audio_reactive_texture_data.data() + band * config.pixels_per_band, config.pixels_per_band);
+        }
+
+        // MIC DEBUGGING
+
+        if(arg_parser.found("debug-audio")){
+          for(int s=0; s < config.samples_per_pixel; s++){
+              float converted_sample = convertS16LEToFloat(microphone_buffer.data() + 2 * s);
+              memcpy(wav_samples.data() + config.samples_per_pixel * 4 * buffers_written + 4 * s, &converted_sample, 4);
+          }
+
+          buffers_written ++;
+
+          if(buffers_written == NUM_FRAMES_TO_RECORD_DEBUG){
+            drwav_data_format format;
+            format.container = drwav_container_riff;     // <-- drwav_container_riff = normal WAV files, drwav_container_w64 = Sony Wave64.
+            format.format = DR_WAVE_FORMAT_IEEE_FLOAT;          // <-- Any of the DR_WAVE_FORMAT_* codes.
+            format.channels = 1;
+            format.sampleRate = 44100;
+            format.bitsPerSample = 32;
+
+            drwav wav;
+            drwav_init_file_write(&wav, "test.wav", &format, NULL);
+            drwav_write_pcm_frames(&wav, NUM_FRAMES_TO_RECORD_DEBUG * config.samples_per_pixel, wav_samples.data());
+
+            for(int band=0; band<config.num_bands(); band++){
+              drwav band_wav;
+              drwav_init_file_write(&band_wav, ("test_band" + to_string(band) + ".wav").c_str(), &format, NULL);
+              drwav_write_pcm_frames(&band_wav, NUM_FRAMES_TO_RECORD_DEBUG * config.samples_per_pixel, wav_band_samples[band].data());
+            }
+
+            ws2811_fini(&ledstring);
+            microphone->close();
+            return 0;
+          }
         }
       }
 
