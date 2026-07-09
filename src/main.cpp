@@ -94,6 +94,27 @@ float convertS16LEToFloat(const char sample[2]) {
     return intSample / 32768.0f; // 32768 is 2^15, the maximum absolute value for int16_t
 }
 
+// Decodes the first channel of an interleaved frame, whatever width the
+// driver actually gave us (the requested format is not guaranteed)
+float frame_to_float(const char* frame, int sample_width_bytes) {
+    if(sample_width_bytes == 2)
+        return convertS16LEToFloat(frame);
+
+    if(sample_width_bytes == 4){ // S32_LE
+        int32_t sample;
+        memcpy(&sample, frame, 4);
+        return sample / 2147483648.f;
+    }
+
+    if(sample_width_bytes == 3){ // S24_3LE
+        int32_t sample = (int8_t) frame[2];
+        sample = (sample << 16) | ((uint8_t) frame[1] << 8) | (uint8_t) frame[0];
+        return sample / 8388608.f;
+    }
+
+    return 0.f;
+}
+
 // Sweep a pulse of each primary colour across the strip so LED wiring can be
 // verified from the hardware alone, even when the GPU or microphone is broken.
 void led_colour_wave(ws2811_t &ledstring, int num_leds){
@@ -220,10 +241,7 @@ int main(int argc, char* argv[]){
   int buffers_written = 0;
   if(arg_parser.found("debug-audio")){
     cout << "Debugging audio..." << "\n";
-    wav_samples.resize(NUM_FRAMES_TO_RECORD_DEBUG * config.samples_per_pixel * 4);
-    for(int b = 0; b < config.num_bands(); b++){
-      wav_band_samples.emplace_back(NUM_FRAMES_TO_RECORD_DEBUG * config.samples_per_pixel * 4);
-    }
+    // buffers are allocated after the mic opens, once the real period size is known
   }
 
   // Setup microphone processing
@@ -237,6 +255,10 @@ int main(int argc, char* argv[]){
   vector<unsigned char> audio_reactive_texture_data;
   GLuint audio_reactive_texture;
 
+  // Actual capture geometry, updated from the driver after the mic opens
+  int bytes_per_frame = 2, sample_width_bytes = 2;
+  int frames_per_read = config.samples_per_pixel;
+
   if(config.alsa_input_device != "" && !diag.audio_device_ok){
     cerr << "[FAIL] Audio device unavailable, continuing without audio reactivity.\n";
   }
@@ -248,31 +270,38 @@ int main(int argc, char* argv[]){
       cerr << "[FAIL] Could not open audio device " << config.alsa_input_device << ", continuing without audio reactivity.\n";
       microphone.reset();
     } else {
-      microphone_buffer.resize(microphone->get_bytes_per_frame() * microphone->get_frames_per_period());
+      // The driver may have adjusted format/channels/period; size everything from reality
+      bytes_per_frame = microphone->get_bytes_per_frame();
+      sample_width_bytes = microphone->get_sample_width_bytes();
+      frames_per_read = microphone->get_frames_per_period();
 
-      // Listen to one buffer to verify the mic produces a real signal, not silence or a stuck value
+      if(microphone->get_channels() != 1 || sample_width_bytes != 2 || frames_per_read != config.samples_per_pixel){
+        cerr << "[    ] ALSA configured " << microphone->get_channels() << " channel(s), "
+             << sample_width_bytes * 8 << "-bit samples, " << frames_per_read
+             << " frames/period (requested 1ch, 16-bit, " << config.samples_per_pixel
+             << ") - adapting. A 'plughw:' device name lets ALSA convert automatically.\n";
+      }
 
-      unsigned int frames_read = microphone->capture_into_buffer(microphone_buffer.data(), config.samples_per_pixel);
-      if(frames_read != (unsigned int) config.samples_per_pixel){
-        cerr << "[FAIL] Microphone test read returned " << frames_read << " of " << config.samples_per_pixel << " frames.\n";
+      microphone_buffer.resize(bytes_per_frame * frames_per_read);
+
+      // Listen to one buffer and report its level. Zeros are normal here: some
+      // I2S mics stay silent until enough noise wakes them up.
+
+      unsigned int frames_read = microphone->capture_into_buffer(microphone_buffer.data(), frames_per_read);
+      if(frames_read != (unsigned int) frames_per_read){
+        cerr << "[FAIL] Microphone test read returned " << frames_read << " of " << frames_per_read << " frames, continuing anyway.\n";
       } else {
-        float min_sample = 1.f, max_sample = -1.f;
         double sum = 0;
-        for(int s = 0; s < config.samples_per_pixel; s++){
-          float sample = convertS16LEToFloat(microphone_buffer.data() + 2*s);
+        for(int s = 0; s < frames_per_read; s++){
+          float sample = frame_to_float(microphone_buffer.data() + bytes_per_frame*s, sample_width_bytes);
           sum += sample * sample;
-          if(sample < min_sample) min_sample = sample;
-          if(sample > max_sample) max_sample = sample;
         }
 
-        if(min_sample == max_sample){
-          cerr << "[FAIL] Microphone test buffer is constant (" << max_sample << ") -> "
-               << (max_sample == 0.f ? "all zeros: I2S data line likely dead (check DOUT/BCLK/LRCL wiring and 'dtoverlay=googlevoicehat-soundcard')"
-                                     : "stuck at a fixed value: mic or driver problem") << "\n";
-        } else {
-          double rms = sqrt(sum / config.samples_per_pixel);
+        double rms = sqrt(sum / frames_per_read);
+        if(rms > 0)
           cout << "[ OK ] Microphone test buffer rms: " << lround(20.0 * log10(rms)) << " dB\n";
-        }
+        else
+          cout << "[ OK ] Microphone test buffer rms: silent (some mics need noise before producing samples)\n";
       }
 
       for(int band = 0; band < config.num_bands(); band++){
@@ -281,7 +310,14 @@ int main(int argc, char* argv[]){
         band_pixel_buffers.emplace_back(config.pixels_per_band);
       }
 
-      filtered_samples.resize(config.samples_per_pixel);
+      filtered_samples.resize(frames_per_read);
+
+      if(arg_parser.found("debug-audio")){
+        wav_samples.resize(NUM_FRAMES_TO_RECORD_DEBUG * frames_per_read * 4);
+        for(int b = 0; b < config.num_bands(); b++){
+          wav_band_samples.emplace_back(NUM_FRAMES_TO_RECORD_DEBUG * frames_per_read * 4);
+        }
+      }
       audio_reactive_texture_data.resize(config.pixels_per_band * config.num_bands(), 0);
 
       glGenTextures(1, &audio_reactive_texture);
@@ -389,32 +425,32 @@ int main(int argc, char* argv[]){
     // Calculate shader audio texture
 
     if(microphone){
-      while(microphone->samples_left_to_read() >= config.samples_per_pixel){
-        microphone->capture_into_buffer(microphone_buffer.data(), config.samples_per_pixel);
+      while(microphone->samples_left_to_read() >= (unsigned int) frames_per_read){
+        microphone->capture_into_buffer(microphone_buffer.data(), frames_per_read);
 
         // Filter mic signal into bands
 
         for(int band = 0; band < config.num_bands(); band++){
           // Filter current buffer
-          for(int s = 0; s < config.samples_per_pixel; s++){
-            // S16_LE one channel -> float  !! ASSUMES ONE CHANNEL
-            filtered_samples[s] = convertS16LEToFloat(microphone_buffer.data() + 2*s);
+          for(int s = 0; s < frames_per_read; s++){
+            // First channel of each frame -> float
+            filtered_samples[s] = frame_to_float(microphone_buffer.data() + bytes_per_frame*s, sample_width_bytes);
             // Filter
             filtered_samples[s] = band_filters[band].filter(filtered_samples[s]);
           }
 
           // MIC DEBUGGING FOR BAND PROCESSING
           if(arg_parser.found("debug-audio")){
-            memcpy(wav_band_samples[band].data() + config.samples_per_pixel * 4 * buffers_written, filtered_samples.data(), config.samples_per_pixel * 4);
+            memcpy(wav_band_samples[band].data() + frames_per_read * 4 * buffers_written, filtered_samples.data(), frames_per_read * 4);
           }
 
           // Calculate brightness of next pixel from db RMS
           double sum = 0;
-          for(int s = 0; s < config.samples_per_pixel; s++){
+          for(int s = 0; s < frames_per_read; s++){
             sum += filtered_samples[s] * filtered_samples[s];
           }
           // This rms measurement seems to just be garbage data? not correlated with the volume at all
-          double rms = sqrt(sum / config.samples_per_pixel) * 50.0; // 50.0 is temporary pregain
+          double rms = sqrt(sum / frames_per_read) * 50.0; // 50.0 is temporary pregain
 
           //cout << "band " << band << ": " << rms << "\n";
 
@@ -427,9 +463,9 @@ int main(int argc, char* argv[]){
         // MIC DEBUGGING
 
         if(arg_parser.found("debug-audio")){
-          for(int s=0; s < config.samples_per_pixel; s++){
-              float converted_sample = convertS16LEToFloat(microphone_buffer.data() + 2 * s);
-              memcpy(wav_samples.data() + config.samples_per_pixel * 4 * buffers_written + 4 * s, &converted_sample, 4);
+          for(int s=0; s < frames_per_read; s++){
+              float converted_sample = frame_to_float(microphone_buffer.data() + bytes_per_frame * s, sample_width_bytes);
+              memcpy(wav_samples.data() + frames_per_read * 4 * buffers_written + 4 * s, &converted_sample, 4);
           }
 
           buffers_written ++;
@@ -444,12 +480,12 @@ int main(int argc, char* argv[]){
 
             drwav wav;
             drwav_init_file_write(&wav, "test.wav", &format, NULL);
-            drwav_write_pcm_frames(&wav, NUM_FRAMES_TO_RECORD_DEBUG * config.samples_per_pixel, wav_samples.data());
+            drwav_write_pcm_frames(&wav, NUM_FRAMES_TO_RECORD_DEBUG * frames_per_read, wav_samples.data());
 
             for(int band=0; band<config.num_bands(); band++){
               drwav band_wav;
               drwav_init_file_write(&band_wav, ("test_band" + to_string(band) + ".wav").c_str(), &format, NULL);
-              drwav_write_pcm_frames(&band_wav, NUM_FRAMES_TO_RECORD_DEBUG * config.samples_per_pixel, wav_band_samples[band].data());
+              drwav_write_pcm_frames(&band_wav, NUM_FRAMES_TO_RECORD_DEBUG * frames_per_read, wav_band_samples[band].data());
             }
 
             ws2811_fini(&ledstring);
