@@ -115,35 +115,41 @@ float frame_to_float(const char* frame, int sample_width_bytes) {
     return 0.f;
 }
 
-// Sweep a pulse of each primary colour across the strip so LED wiring can be
-// verified from the hardware alone, even when the GPU or microphone is broken.
+// Sweep pulses of all three primary colours across the strip at once so LED
+// wiring can be verified from the hardware alone, even when the GPU or
+// microphone is broken. Green runs left to right, red right to left, and blue
+// expands from the middle outwards. This takes the same time as a single
+// colour's sweep did before, since all three share one pass of the head.
 void led_colour_wave(ws2811_t &ledstring, int num_leds){
-  struct { const char* name; int r, g, b; } waves[] = {
-    {"red",   255, 0,   0},
-    {"green", 0,   255, 0},
-    {"blue",  0,   0,   255},
-  };
   const int TAIL = 12;
+  const float center = (num_leds - 1) / 2.0f;
 
-  for(auto &wave : waves){
-    cout << "[TEST] LED wave: " << wave.name << "\n";
+  cout << "[TEST] LED wave: green ->, red <-, blue from middle\n";
 
-    for(int head = 0; head < num_leds + TAIL && running; head += 2){
-      for(int i = 0; i < num_leds; i++){
-        int dist = head - i;
-        if(dist < 0) dist = -dist;
-        float intensity = dist >= TAIL ? 0.f : 1.f - (float) dist / TAIL;
+  auto fade = [&](float dist){
+    return dist >= TAIL ? 0.f : 1.f - dist / TAIL;
+  };
 
-        // Same 0x00BBGGRR packing as the render loop below
-        ledstring.channel[0].leds[i] = ((int)(wave.b * intensity) << 16)
-                                     | ((int)(wave.g * intensity) << 8)
-                                     |  (int)(wave.r * intensity);
-      }
+  for(int head = 0; head < num_leds + TAIL && running; head += 2){
+    for(int i = 0; i < num_leds; i++){
+      // Green sweeps left to right along the strip
+      float g = fade(fabsf(head - (float) i));
+      // Red sweeps right to left (mirror of the green position)
+      float r = fade(fabsf(head - (float)((num_leds - 1) - i)));
+      // Blue expands outwards from the middle in both directions. It only has
+      // to travel half the strip, so it moves at half the head speed and thus
+      // reaches the edges just as green/red reach the opposite ends.
+      float b = fade(fabsf(fabsf(i - center) - head * 0.5f));
 
-      if(ws2811_render(&ledstring) != WS2811_SUCCESS)
-        return;
-      usleep(8000);
+      // Same 0x00BBGGRR packing as the render loop below
+      ledstring.channel[0].leds[i] = ((int)(255 * b) << 16)
+                                   | ((int)(255 * g) << 8)
+                                   |  (int)(255 * r);
     }
+
+    if(ws2811_render(&ledstring) != WS2811_SUCCESS)
+      return;
+    usleep(8000);
   }
 
   for(int i = 0; i < num_leds; i++)
