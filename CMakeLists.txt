@@ -3,6 +3,11 @@ cmake_minimum_required(VERSION 3.5)
 set(CMAKE_C_STANDARD 11)
 set(CMAKE_CXX_STANDARD 17)
 
+# Build all vendored libraries static so the installed open_gled binary is
+# self-contained (buildroot passes -DBUILD_SHARED_LIBS=ON, and untyped
+# add_library() calls in the subprojects follow it)
+set(BUILD_SHARED_LIBS OFF)
+
 set(YAML_CPP_BUILD_TESTS OFF)
 set(YAML_CPP_BUILD_TOOLS OFF)
 add_subdirectory(external/yaml-cpp)
@@ -17,7 +22,7 @@ add_subdirectory (external/iir1)
 
 project(OpenGLED VERSION 0.1.0)
 
-add_executable(open_gled src/main.cpp src/OpenGLEDConfig.cpp src/RaspiHeadlessOpenGLContext.cpp src/RotaryEncoder.cpp src/Shader.cpp external/ALSA.CPP/ALSADevices.cpp external/argspp/src/args.cpp)
+add_executable(open_gled src/main.cpp src/OpenGLEDConfig.cpp src/RaspiHeadlessOpenGLContext.cpp src/RotaryEncoder.cpp src/Shader.cpp src/StartupDiagnostics.cpp external/ALSA.CPP/ALSADevices.cpp external/argspp/src/args.cpp)
 target_include_directories(open_gled PRIVATE include)
 
 target_include_directories(open_gled PRIVATE external/rpi_ws281x)

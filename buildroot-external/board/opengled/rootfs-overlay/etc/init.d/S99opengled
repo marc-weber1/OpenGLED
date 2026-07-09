@@ -22,7 +22,10 @@ start() {
 	# vc4 and the I2S soundcard are loaded as modules by mdev; wait for them
 	wait_for /dev/dri/card0 "DRM device"
 	wait_for /dev/snd/pcmC0D0c "ALSA capture device"
-	start-stop-daemon -S -b -q -m -p "$PIDFILE" -x "$DAEMON" -- --config "$CONFIG"
+	# Send all app output to the console (HDMI) so failures are visible
+	# without a keyboard; exec keeps the pidfile pointing at open_gled.
+	start-stop-daemon -S -b -q -m -p "$PIDFILE" -x /bin/sh -- \
+		-c "exec $DAEMON --config $CONFIG >/dev/console 2>&1"
 	[ $? = 0 ] && echo "OK" || echo "FAIL"
 }
 

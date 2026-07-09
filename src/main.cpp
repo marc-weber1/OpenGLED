@@ -25,6 +25,7 @@
 #include "OpenGLEDConfig.h"
 #include "RotaryEncoder.h"
 #include "Shader.h"
+#include "StartupDiagnostics.h"
 
 #define STRIP_TYPE WS2811_STRIP_GBR // 00 BB GG RR
 #define FILTER_ORDER 2
@@ -93,6 +94,42 @@ float convertS16LEToFloat(const char sample[2]) {
     return intSample / 32768.0f; // 32768 is 2^15, the maximum absolute value for int16_t
 }
 
+// Sweep a pulse of each primary colour across the strip so LED wiring can be
+// verified from the hardware alone, even when the GPU or microphone is broken.
+void led_colour_wave(ws2811_t &ledstring, int num_leds){
+  struct { const char* name; int r, g, b; } waves[] = {
+    {"red",   255, 0,   0},
+    {"green", 0,   255, 0},
+    {"blue",  0,   0,   255},
+  };
+  const int TAIL = 12;
+
+  for(auto &wave : waves){
+    cout << "[TEST] LED wave: " << wave.name << "\n";
+
+    for(int head = 0; head < num_leds + TAIL && running; head += 2){
+      for(int i = 0; i < num_leds; i++){
+        int dist = head - i;
+        if(dist < 0) dist = -dist;
+        float intensity = dist >= TAIL ? 0.f : 1.f - (float) dist / TAIL;
+
+        // Same 0x00BBGGRR packing as the render loop below
+        ledstring.channel[0].leds[i] = ((int)(wave.b * intensity) << 16)
+                                     | ((int)(wave.g * intensity) << 8)
+                                     |  (int)(wave.r * intensity);
+      }
+
+      if(ws2811_render(&ledstring) != WS2811_SUCCESS)
+        return;
+      usleep(8000);
+    }
+  }
+
+  for(int i = 0; i < num_leds; i++)
+    ledstring.channel[0].leds[i] = 0;
+  ws2811_render(&ledstring);
+}
+
 int main(int argc, char* argv[]){
 
   // Check args to see if we are debugging or something
@@ -115,15 +152,65 @@ int main(int argc, char* argv[]){
   }
   OpenGLEDConfig config = maybe_config.value();
 
+  // Print a console-visible verdict for every known failure mode
+
+  DiagnosticsResult diag = run_startup_diagnostics(config);
+
+  // Setup buffer to copy pixel data to LEDs
+
+  vector<char> led_buffer(config.width * config.height * 3);
+
+  // Setup LED strip first, so the test wave below runs even if the GPU or mic is broken
+
+  ws2811_t ledstring =
+  {
+    .freq = WS2811_TARGET_FREQ,
+    .dmanum = config.dma,
+    .channel =
+    {
+      [0] =
+      {
+        .gpionum = config.gpio_pin,
+        .invert = 0,
+        .count = config.width * config.height,
+        .strip_type = STRIP_TYPE,
+        .brightness = config.brightness,
+      },
+      [1] =
+      {
+        .gpionum = 0,
+        .invert = 0,
+        .count = 0,
+        .brightness = 0,
+      },
+    },
+  };
+
+  ws2811_return_t ret;
+
+  if((ret = ws2811_init(&ledstring)) != WS2811_SUCCESS){
+    cerr << "[FAIL] ws2811_init failed: " << ws2811_get_return_t_str(ret) << "\n";
+    return ret;
+  }
+  cout << "[ OK ] LED strip initialized (GPIO " << config.gpio_pin << ", "
+       << config.width * config.height << " LEDs)\n";
+
+  // Wave each primary colour across the strip to verify the LEDs work at all
+
+  led_colour_wave(ledstring, config.width * config.height);
+
   // Create OpenGL context
 
   RaspiHeadlessOpenGLContext context = RaspiHeadlessOpenGLContext(config.width, config.height);
   if(!context.Initialize()){
-    cerr << "Failed to create a headless OpenGL context.\n";
+    cerr << "[FAIL] Failed to create a headless OpenGL context.\n";
+    ws2811_fini(&ledstring);
     return 1;
   }
 
   context.MakeCurrent();
+  cout << "[ OK ] OpenGL renderer: " << (const char*) glGetString(GL_RENDERER)
+       << ", " << (const char*) glGetString(GL_VERSION) << "\n";
 
   // Setup mic debugging
 
@@ -150,23 +237,57 @@ int main(int argc, char* argv[]){
   vector<unsigned char> audio_reactive_texture_data;
   GLuint audio_reactive_texture;
 
-  if(config.alsa_input_device != ""){
+  if(config.alsa_input_device != "" && !diag.audio_device_ok){
+    cerr << "[FAIL] Audio device unavailable, continuing without audio reactivity.\n";
+  }
+
+  if(config.alsa_input_device != "" && diag.audio_device_ok){
     microphone = make_unique<ALSACaptureDevice>(config.alsa_input_device, config.sample_rate, 1, config.samples_per_pixel, SND_PCM_FORMAT_S16_LE);
-    microphone_buffer.resize(microphone->get_bytes_per_frame() * microphone->get_frames_per_period());
-    microphone->open();
 
-    for(int band = 0; band < config.num_bands(); band++){
-      band_filters.emplace_back();
-      band_filters[band].setup(config.sample_rate, config.center_frequency(band), config.band_width(band));
-      band_pixel_buffers.emplace_back(config.pixels_per_band);
+    if(!microphone->open()){
+      cerr << "[FAIL] Could not open audio device " << config.alsa_input_device << ", continuing without audio reactivity.\n";
+      microphone.reset();
+    } else {
+      microphone_buffer.resize(microphone->get_bytes_per_frame() * microphone->get_frames_per_period());
+
+      // Listen to one buffer to verify the mic produces a real signal, not silence or a stuck value
+
+      unsigned int frames_read = microphone->capture_into_buffer(microphone_buffer.data(), config.samples_per_pixel);
+      if(frames_read != (unsigned int) config.samples_per_pixel){
+        cerr << "[FAIL] Microphone test read returned " << frames_read << " of " << config.samples_per_pixel << " frames.\n";
+      } else {
+        float min_sample = 1.f, max_sample = -1.f;
+        double sum = 0;
+        for(int s = 0; s < config.samples_per_pixel; s++){
+          float sample = convertS16LEToFloat(microphone_buffer.data() + 2*s);
+          sum += sample * sample;
+          if(sample < min_sample) min_sample = sample;
+          if(sample > max_sample) max_sample = sample;
+        }
+
+        if(min_sample == max_sample){
+          cerr << "[FAIL] Microphone test buffer is constant (" << max_sample << ") -> "
+               << (max_sample == 0.f ? "all zeros: I2S data line likely dead (check DOUT/BCLK/LRCL wiring and 'dtoverlay=googlevoicehat-soundcard')"
+                                     : "stuck at a fixed value: mic or driver problem") << "\n";
+        } else {
+          double rms = sqrt(sum / config.samples_per_pixel);
+          cout << "[ OK ] Microphone test buffer rms: " << lround(20.0 * log10(rms)) << " dB\n";
+        }
+      }
+
+      for(int band = 0; band < config.num_bands(); band++){
+        band_filters.emplace_back();
+        band_filters[band].setup(config.sample_rate, config.center_frequency(band), config.band_width(band));
+        band_pixel_buffers.emplace_back(config.pixels_per_band);
+      }
+
+      filtered_samples.resize(config.samples_per_pixel);
+      audio_reactive_texture_data.resize(config.pixels_per_band * config.num_bands(), 0);
+
+      glGenTextures(1, &audio_reactive_texture);
+      glBindTexture(GL_TEXTURE_2D, audio_reactive_texture); // This needs to be called every time if you use any other texture
+      glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
     }
-
-    filtered_samples.resize(config.samples_per_pixel);
-    audio_reactive_texture_data.resize(config.pixels_per_band * config.num_bands(), 0);
-
-    glGenTextures(1, &audio_reactive_texture);
-    glBindTexture(GL_TEXTURE_2D, audio_reactive_texture); // This needs to be called every time if you use any other texture
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
   }
 
   // Clear whole screen (front buffer)
@@ -198,12 +319,14 @@ int main(int argc, char* argv[]){
       }*/
 
       shaders.emplace_back(DEFAULT_VERTEX_SHADER, shaderCode.c_str()); // Have to be careful with copies since the shader destroys on deconstruct
-      
+      cout << "[ OK ] Loaded shader: " << file.path() << "\n";
+
     }
   }
 
   if(shaders.size() == 0){
-    cerr << "Could not find any shaders ending with .fs in " << config.shader_folder << "\n";
+    cerr << "[FAIL] Could not find any shaders ending with .fs in " << config.shader_folder << "\n";
+    ws2811_fini(&ledstring);
     return 1;
   }
 
@@ -248,42 +371,7 @@ int main(int argc, char* argv[]){
     }
   }
 
-  // Setup buffer to copy pixel data to LEDs
-
-  vector<char> led_buffer(config.width * config.height * 3);
-
-  // Setup LED strip
-
-  ws2811_t ledstring =
-  {
-    .freq = WS2811_TARGET_FREQ,
-    .dmanum = config.dma,
-    .channel =
-    {
-      [0] =
-      {
-        .gpionum = config.gpio_pin,
-        .invert = 0,
-        .count = config.width * config.height,
-        .strip_type = STRIP_TYPE,
-        .brightness = config.brightness,
-      },
-      [1] =
-      {
-        .gpionum = 0,
-        .invert = 0,
-        .count = 0,
-        .brightness = 0,
-      },
-    },
-  };
-
-  ws2811_return_t ret;
-
-  if((ret = ws2811_init(&ledstring)) != WS2811_SUCCESS){
-    cerr << "ws2811_init failed: " << ws2811_get_return_t_str(ret) << "\n";
-    return ret;
-  }
+  cout << "[ OK ] Startup complete, entering render loop.\n";
 
   while(running){
 
