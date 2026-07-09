@@ -114,6 +114,7 @@ PERL_MODULES=(
     File::Compare
     Getopt::Long
     Digest::SHA
+    Time::Piece
 )
 for mod in "${PERL_MODULES[@]}"; do
     # Load the module file with require rather than `use`/-M: pragmas like
