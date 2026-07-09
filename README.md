@@ -67,10 +67,12 @@ battery while nothing is plugged in — there are no radios or daemons idling.
 3. Everything editable lives on the writable partition:
 
 ```sh
+cat /var/log/messages             # check logs
 nano /data/config.yaml            # edit the config
-nano /data/shaders/myshader.fs   # create/edit a shader
-rm /data/shaders/old.fs          # delete one
+nano /data/shaders/myshader.fs    # create/edit a shader
+rm /data/shaders/old.fs           # delete one
 /etc/init.d/S99opengled restart   # restart the renderer to apply changes
+
 ```
 
 You can also copy files in from the host: `scp shader.fs root@10.55.0.1:/data/shaders/`.
