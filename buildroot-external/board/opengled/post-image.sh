@@ -19,7 +19,7 @@ cp "${BOARD_DIR}/data-partition/config.yaml" "${DATA_ROOT}/config.yaml"
 cp "${REPO_DIR}/shaders/"*.fs "${DATA_ROOT}/shaders/"
 
 rm -f "${BINARIES_DIR}/data.ext4"
-truncate -s 32M "${BINARIES_DIR}/data.ext4"
+truncate -s 128M "${BINARIES_DIR}/data.ext4"
 mkfs.ext4 -q -F -L gled-data -d "${DATA_ROOT}" "${BINARIES_DIR}/data.ext4"
 
 support/scripts/genimage.sh -c "${BOARD_DIR}/genimage.cfg"

@@ -6,6 +6,8 @@
 DAEMON=/usr/bin/open_gled
 PIDFILE=/var/run/open_gled.pid
 CONFIG=/data/config.yaml
+# FIFO on tmpfs (RAM) that carries the app's output to logger; see start().
+LOGFIFO=/run/open_gled.log
 
 wait_for() {
 	# $1 = path, $2 = what
@@ -22,10 +24,17 @@ start() {
 	# vc4 and the I2S soundcard are loaded as modules by mdev; wait for them
 	wait_for /dev/dri/card0 "DRM device"
 	wait_for /dev/snd/pcmC0D0c "ALSA capture device"
-	# Send all app output to the console (HDMI) so failures are visible
-	# without a keyboard; exec keeps the pidfile pointing at open_gled.
+	# Route all app output into syslog (RAM-backed /var/log -> /tmp) instead of
+	# the SD card, while also echoing to the console (HDMI) so failures stay
+	# visible without a keyboard. A FIFO on tmpfs lets logger drain the output
+	# while open_gled remains the exec'd, pidfile-tracked process, so the clean
+	# SIGTERM shutdown below still works; the drain sees EOF and exits when
+	# open_gled stops. Writing to tty1/tmpfs never touches the SD card.
+	rm -f "$LOGFIFO"
+	mkfifo "$LOGFIFO"
+	tee /dev/console <"$LOGFIFO" | logger -t open_gled &
 	start-stop-daemon -S -b -q -m -p "$PIDFILE" -x /bin/sh -- \
-		-c "exec $DAEMON --config $CONFIG >/dev/console 2>&1"
+		-c "exec $DAEMON --config $CONFIG >$LOGFIFO 2>&1"
 	[ $? = 0 ] && echo "OK" || echo "FAIL"
 }
 
@@ -33,7 +42,7 @@ stop() {
 	printf "Stopping open_gled: "
 	start-stop-daemon -K -q -p "$PIDFILE"
 	[ $? = 0 ] && echo "OK" || echo "FAIL"
-	rm -f "$PIDFILE"
+	rm -f "$PIDFILE" "$LOGFIFO"
 }
 
 case "$1" in

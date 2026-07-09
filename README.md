@@ -75,6 +75,30 @@ rm /data/shaders/old.fs          # delete one
 
 You can also copy files in from the host: `scp shader.fs root@10.55.0.1:/data/shaders/`.
 
+### Viewing the boot & renderer logs
+
+Once you're in over SSH, you can read the startup diagnostics and any errors
+the renderer printed while booting. `open_gled`'s output is sent to the system
+log (tagged `open_gled`), which lives in RAM (`/var/log` is a tmpfs, so this
+never writes to the SD card):
+
+```sh
+grep open_gled /var/log/messages   # just the renderer (startup [ OK ]/[FAIL] lines, errors)
+cat /var/log/messages              # everything, including other services
+tail -f /var/log/messages          # follow live, e.g. while restarting the renderer
+dmesg                              # kernel boot messages (driver/module load)
+```
+
+The `[ OK ]` / `[FAIL]` startup lines (LED strip, OpenGL renderer, microphone,
+shaders) all appear here, so this is the first place to look if the LEDs stay
+dark. The same output is also shown on the HDMI console if a display is
+attached.
+
+Because the log is in RAM it is **cleared on every reboot** — it reflects the
+current boot only. If you need it after a crash, capture it over SSH before
+power-cycling (e.g. `cat /var/log/messages > /data/lastboot.log` to stash a
+copy on the writable partition, or `scp` it to your host).
+
 Notes:
 
 - The gadget presents CDC-ECM, which Android, Linux and macOS support out of
