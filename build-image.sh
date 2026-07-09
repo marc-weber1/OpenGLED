@@ -116,7 +116,11 @@ PERL_MODULES=(
     Digest::SHA
 )
 for mod in "${PERL_MODULES[@]}"; do
-    perl -M"$mod" -e1 >/dev/null 2>&1 || missing+=("perl module $mod")
+ +  # Load the module file with require rather than `use`/-M: pragmas like
+    # `open` fail on an empty import list even when installed, so we just
+    # confirm the .pm is loadable (turn Foo::Bar into Foo/Bar.pm).
+    modpath="${mod//:://}.pm"
+    perl -e "require '$modpath'" >/dev/null 2>&1 || missing+=("perl module $mod")
 done
 
 if [[ ${#missing[@]} -gt 0 ]]; then
