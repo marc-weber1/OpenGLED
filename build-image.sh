@@ -116,7 +116,7 @@ PERL_MODULES=(
     Digest::SHA
 )
 for mod in "${PERL_MODULES[@]}"; do
- +  # Load the module file with require rather than `use`/-M: pragmas like
+    # Load the module file with require rather than `use`/-M: pragmas like
     # `open` fail on an empty import list even when installed, so we just
     # confirm the .pm is loadable (turn Foo::Bar into Foo/Bar.pm).
     modpath="${mod//:://}.pm"
