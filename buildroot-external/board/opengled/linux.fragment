@@ -8,3 +8,13 @@ CONFIG_SQUASHFS_ZSTD=y
 CONFIG_GPIO_CDEV=y
 # The app opens /dev/dri/card0 expecting vc4; don't let simpledrm claim card0
 # CONFIG_DRM_SIMPLEDRM is not set
+# USB gadget mode on the data port (dwc2 + configfs) for ssh-over-USB
+# management. Built in (=y) to avoid module load ordering issues at boot.
+CONFIG_USB_DWC2=y
+CONFIG_USB_DWC2_DUAL_ROLE=y
+CONFIG_USB_GADGET=y
+CONFIG_USB_LIBCOMPOSITE=y
+CONFIG_USB_CONFIGFS=y
+CONFIG_USB_CONFIGFS_ECM=y
+CONFIG_USB_CONFIGFS_NCM=y
+CONFIG_USB_CONFIGFS_RNDIS=y

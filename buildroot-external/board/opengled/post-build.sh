@@ -8,3 +8,10 @@ mkdir -p "${TARGET_DIR}/data"
 # Init scripts must be executable no matter what happened to the overlay
 # files' permissions (editing them from Windows silently strips the x bit).
 chmod +x "${TARGET_DIR}/etc/init.d/"S??*
+
+# Dropbear's ssh host keys must survive reboots, but the rootfs is read-only:
+# point /etc/dropbear at the writable data partition instead of buildroot's
+# default /var/run symlink (S30usbgadget creates /data/dropbear before
+# S50dropbear starts, so keys are generated once and persist).
+rm -rf "${TARGET_DIR}/etc/dropbear"
+ln -snf /data/dropbear "${TARGET_DIR}/etc/dropbear"

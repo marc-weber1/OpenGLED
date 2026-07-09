@@ -53,6 +53,40 @@ The image boots straight into `open_gled` and is laid out for minimal SD wear:
 
 The buildroot configuration lives in `buildroot-external/`.
 
+## Managing shaders & config over USB (ssh)
+
+The image turns the Pi's USB **data** port (the inner micro-USB port, not
+PWR) into a USB ethernet gadget. Unlike Wi-Fi or Bluetooth this costs zero
+battery while nothing is plugged in — there are no radios or daemons idling.
+
+1. Power the Pi as usual, then plug the data port into your phone (with a
+   USB-OTG adapter) or laptop. On Android an "Ethernet" connection appears
+   automatically; Linux/macOS also get an address via DHCP.
+2. `ssh root@10.55.0.1` — password `opengled`. On Android use e.g. Termux
+   (`pkg install openssh`) or JuiceSSH.
+3. Everything editable lives on the writable partition:
+
+```sh
+nano /data/config.yaml            # edit the config
+nano /data/shaders/myshader.fs   # create/edit a shader
+rm /data/shaders/old.fs          # delete one
+/etc/init.d/S99opengled restart   # restart the renderer to apply changes
+```
+
+You can also copy files in from the host: `scp shader.fs root@10.55.0.1:/data/shaders/`.
+
+Notes:
+
+- The gadget presents CDC-ECM, which Android, Linux and macOS support out of
+  the box. For a Windows host, change `FUNC=ecm` to `ncm` (Win11) or `rndis`
+  (Win10) in `buildroot-external/board/opengled/rootfs-overlay/etc/init.d/S30usbgadget`
+  and rebuild.
+- On the Zero the data port's 5V pin is tied straight to the Pi's 5V rail, so
+  a connected phone will also (back)power the Pi. That's normally harmless,
+  but expect extra phone battery drain while plugged in.
+- SSH host keys persist in `/data/dropbear`, so you won't get "host key
+  changed" warnings across reboots.
+
 ## Rotary encoder (shader switching)
 
 A KY-040 rotary encoder cycles through the shaders in `SHADER_FOLDER`

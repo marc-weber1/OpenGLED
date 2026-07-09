@@ -14,3 +14,7 @@ dtoverlay=googlevoicehat-soundcard
 # Enable DRM VC4 V3D driver
 dtoverlay=vc4-kms-v3d
 max_framebuffers=2
+
+# USB gadget mode: the data port becomes a USB ethernet device so a
+# phone/laptop can ssh in (see rootfs-overlay/etc/init.d/S30usbgadget)
+dtoverlay=dwc2,dr_mode=peripheral

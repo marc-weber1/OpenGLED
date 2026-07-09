@@ -1,0 +1,83 @@
+#!/bin/sh
+#
+# Turns the Pi's USB data port into a USB ethernet gadget with a DHCP
+# server, so a phone (via an OTG adapter) or laptop can `ssh root@10.55.0.1`
+# to edit /data/config.yaml and /data/shaders. Costs no power while nothing
+# is plugged in (no radios, no polling).
+#
+
+GADGET=/sys/kernel/config/usb_gadget/opengled
+IP=10.55.0.1
+# ecm works out of the box on Android, Linux and macOS hosts.
+# For a Windows host change to ncm (Win11) or rndis (Win10) and rebuild.
+FUNC=ecm
+
+start() {
+	printf "Starting USB gadget (ssh over USB): "
+
+	# dropbear (S50) keeps its ssh host keys in /data/dropbear via the
+	# /etc/dropbear symlink; the directory must exist before it starts.
+	mkdir -p /data/dropbear
+
+	grep -q configfs /proc/filesystems || modprobe configfs 2>/dev/null
+	grep -q ' /sys/kernel/config ' /proc/mounts \
+		|| mount -t configfs none /sys/kernel/config
+	modprobe libcomposite 2>/dev/null
+
+	if [ ! -d "$GADGET" ]; then
+		mkdir -p "$GADGET"
+		echo 0x1d6b > "$GADGET/idVendor"   # Linux Foundation
+		echo 0x0104 > "$GADGET/idProduct"  # Multifunction composite gadget
+
+		mkdir -p "$GADGET/strings/0x409"
+		SERIAL="$(awk '/^Serial/ {print $3}' /proc/cpuinfo)"
+		echo "${SERIAL:-00000000}" > "$GADGET/strings/0x409/serialnumber"
+		echo "OpenGLED" > "$GADGET/strings/0x409/manufacturer"
+		echo "OpenGLED LED controller" > "$GADGET/strings/0x409/product"
+
+		mkdir -p "$GADGET/configs/c.1/strings/0x409"
+		echo "$FUNC network" > "$GADGET/configs/c.1/strings/0x409/configuration"
+		echo 250 > "$GADGET/configs/c.1/MaxPower"
+
+		# Fixed locally-administered MACs so hosts recognize the device
+		mkdir -p "$GADGET/functions/$FUNC.usb0"
+		echo "02:47:4c:45:44:01" > "$GADGET/functions/$FUNC.usb0/host_addr"
+		echo "02:47:4c:45:44:02" > "$GADGET/functions/$FUNC.usb0/dev_addr"
+		ln -s "$GADGET/functions/$FUNC.usb0" "$GADGET/configs/c.1/"
+	fi
+
+	UDC="$(ls /sys/class/udc 2>/dev/null | head -n1)"
+	if [ -z "$UDC" ]; then
+		echo "FAIL (no UDC device; is 'dtoverlay=dwc2' in config.txt?)"
+		return 1
+	fi
+	[ "$(cat "$GADGET/UDC")" = "$UDC" ] || echo "$UDC" > "$GADGET/UDC"
+
+	ifconfig usb0 "$IP" netmask 255.255.255.0 up
+	udhcpd /etc/udhcpd-usb0.conf
+	echo "OK (ssh root@$IP)"
+}
+
+stop() {
+	printf "Stopping USB gadget: "
+	killall udhcpd 2>/dev/null
+	[ -f "$GADGET/UDC" ] && echo "" > "$GADGET/UDC" 2>/dev/null
+	ifconfig usb0 down 2>/dev/null
+	echo "OK"
+}
+
+case "$1" in
+	start)
+		start
+		;;
+	stop)
+		stop
+		;;
+	restart|reload)
+		stop
+		start
+		;;
+	*)
+		echo "Usage: $0 {start|stop|restart}"
+		exit 1
+esac

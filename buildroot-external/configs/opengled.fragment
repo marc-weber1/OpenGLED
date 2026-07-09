@@ -37,6 +37,16 @@ BR2_PACKAGE_ALSA_UTILS_APLAY=y
 # The app itself
 BR2_PACKAGE_OPEN_GLED=y
 
+# Management over USB: the data port becomes a USB ethernet gadget
+# (board/opengled/rootfs-overlay/etc/init.d/S30usbgadget). Plug it into a
+# phone (OTG adapter) or laptop and `ssh root@10.55.0.1`, password "opengled".
+BR2_PACKAGE_DROPBEAR=y
+BR2_PACKAGE_NANO=y
+BR2_TARGET_ENABLE_ROOT_LOGIN=y
+BR2_TARGET_GENERIC_ROOT_PASSWD="opengled"
+# udhcpd (off in busybox's default config) hands the USB host an IP
+BR2_PACKAGE_BUSYBOX_CONFIG_FRAGMENT_FILES="$(BR2_EXTERNAL_OPENGLED_PATH)/board/opengled/busybox.fragment"
+
 # Read-only squashfs rootfs: no SD card writes during normal operation
 BR2_TARGET_ROOTFS_SQUASHFS=y
 # BR2_TARGET_ROOTFS_EXT2 is not set

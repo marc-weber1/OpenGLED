@@ -1,0 +1,4 @@
+# Merged on top of buildroot's default busybox config.
+# udhcpd serves an IP to the USB host (phone/laptop) plugged into the
+# gadget port -- see rootfs-overlay/etc/init.d/S30usbgadget.
+CONFIG_UDHCPD=y
