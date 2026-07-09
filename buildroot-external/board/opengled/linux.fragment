@@ -1,0 +1,10 @@
+# The root filesystem is squashfs; must be built in (not a module) to mount root.
+# Enable all decompressors buildroot might pick for BR2_TARGET_ROOTFS_SQUASHFS.
+CONFIG_SQUASHFS=y
+CONFIG_SQUASHFS_ZLIB=y
+CONFIG_SQUASHFS_XZ=y
+CONFIG_SQUASHFS_ZSTD=y
+# Rotary encoder is read through the GPIO character device uAPI (v2)
+CONFIG_GPIO_CDEV=y
+# The app opens /dev/dri/card0 expecting vc4; don't let simpledrm claim card0
+# CONFIG_DRM_SIMPLEDRM is not set

@@ -1,0 +1,16 @@
+kernel=zImage
+disable_splash=1
+
+dtparam=i2s=on
+dtparam=spi=on
+
+# Lock core frequency to 500 for SPI timing (WS281x over GPIO 10)
+core_freq=500
+core_freq_min=500
+
+# Enable I2S mic
+dtoverlay=googlevoicehat-soundcard
+
+# Enable DRM VC4 V3D driver
+dtoverlay=vc4-kms-v3d
+max_framebuffers=2

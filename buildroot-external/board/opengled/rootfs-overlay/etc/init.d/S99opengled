@@ -1,0 +1,51 @@
+#!/bin/sh
+#
+# Starts the OpenGLED renderer.
+#
+
+DAEMON=/usr/bin/open_gled
+PIDFILE=/var/run/open_gled.pid
+CONFIG=/data/config.yaml
+
+wait_for() {
+	# $1 = path, $2 = what
+	i=0
+	while [ ! -e "$1" ] && [ $i -lt 50 ]; do
+		sleep 0.2
+		i=$((i + 1))
+	done
+	[ -e "$1" ] || echo "open_gled: warning: $2 ($1) never appeared"
+}
+
+start() {
+	printf "Starting open_gled: "
+	# vc4 and the I2S soundcard are loaded as modules by mdev; wait for them
+	wait_for /dev/dri/card0 "DRM device"
+	wait_for /dev/snd/pcmC0D0c "ALSA capture device"
+	start-stop-daemon -S -b -q -m -p "$PIDFILE" -x "$DAEMON" -- --config "$CONFIG"
+	[ $? = 0 ] && echo "OK" || echo "FAIL"
+}
+
+stop() {
+	printf "Stopping open_gled: "
+	start-stop-daemon -K -q -p "$PIDFILE"
+	[ $? = 0 ] && echo "OK" || echo "FAIL"
+	rm -f "$PIDFILE"
+}
+
+case "$1" in
+	start)
+		start
+		;;
+	stop)
+		stop
+		;;
+	restart|reload)
+		stop
+		start
+		;;
+	*)
+		echo "Usage: $0 {start|stop|restart}"
+		exit 1
+		;;
+esac

@@ -1,0 +1,49 @@
+# OpenGLED config fragment, merged on top of buildroot's
+# raspberrypizero2w_defconfig by build-image.sh.
+
+# Use every available CPU core when compiling packages (0 = auto-detect)
+BR2_JLEVEL=0
+
+# C++17 app
+BR2_TOOLCHAIN_BUILDROOT_CXX=y
+
+BR2_TARGET_GENERIC_HOSTNAME="opengled"
+BR2_TARGET_GENERIC_ISSUE="OpenGLED - audio reactive LEDs"
+
+# mdev: coldplugs kernel modules by modalias so the I2S soundcard and vc4
+# drivers load automatically at boot
+BR2_ROOTFS_DEVICE_CREATION_DYNAMIC_MDEV=y
+
+# Board customization hooks
+BR2_ROOTFS_OVERLAY="$(BR2_EXTERNAL_OPENGLED_PATH)/board/opengled/rootfs-overlay"
+BR2_ROOTFS_POST_BUILD_SCRIPT="$(BR2_EXTERNAL_OPENGLED_PATH)/board/opengled/post-build.sh"
+BR2_ROOTFS_POST_IMAGE_SCRIPT="$(BR2_EXTERNAL_OPENGLED_PATH)/board/opengled/post-image.sh"
+BR2_ROOTFS_POST_SCRIPT_ARGS=""
+
+# Make sure squashfs support is built into the kernel (rootfs is squashfs)
+BR2_LINUX_KERNEL_CONFIG_FRAGMENT_FILES="$(BR2_EXTERNAL_OPENGLED_PATH)/board/opengled/linux.fragment"
+
+# GPU: mesa with the VideoCore IV gallium driver, GLES2 + EGL (+ gbm)
+BR2_PACKAGE_MESA3D=y
+BR2_PACKAGE_MESA3D_GALLIUM_DRIVER_VC4=y
+BR2_PACKAGE_MESA3D_OPENGL_ES=y
+BR2_PACKAGE_MESA3D_OPENGL_EGL=y
+
+# Audio
+BR2_PACKAGE_ALSA_LIB=y
+BR2_PACKAGE_ALSA_UTILS=y
+BR2_PACKAGE_ALSA_UTILS_APLAY=y
+
+# The app itself
+BR2_PACKAGE_OPEN_GLED=y
+
+# Read-only squashfs rootfs: no SD card writes during normal operation
+BR2_TARGET_ROOTFS_SQUASHFS=y
+# BR2_TARGET_ROOTFS_EXT2 is not set
+# BR2_TARGET_GENERIC_REMOUNT_ROOTFS_RW is not set
+
+# Host tools needed to assemble the SD card image
+BR2_PACKAGE_HOST_GENIMAGE=y
+BR2_PACKAGE_HOST_DOSFSTOOLS=y
+BR2_PACKAGE_HOST_MTOOLS=y
+BR2_PACKAGE_HOST_E2FSPROGS=y

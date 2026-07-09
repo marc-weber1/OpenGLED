@@ -1,54 +1,70 @@
 #include "OpenGLEDConfig.h"
 
+#include <iostream>
 #include <stdexcept>
 
 std::optional<OpenGLEDConfig> OpenGLEDConfig::FromFile(const char* filename)
 {
     OpenGLEDConfig return_config;
-    YAML::Node config = YAML::LoadFile("../example-config.yaml");
 
-    if(config["LED_SETTINGS"]){
-        return_config.gpio_pin = config["LED_SETTINGS"]["GPIO_PIN"].as<int>();
-        return_config.width = config["LED_SETTINGS"]["WIDTH"].as<int>();
-        return_config.height = config["LED_SETTINGS"]["HEIGHT"].as<int>();
+    try {
+        YAML::Node config = YAML::LoadFile(filename);
 
-        if(config["LED_SETTINGS"]["DMA"])
-            return_config.dma = config["LED_SETTINGS"]["DMA"].as<int>();
-        if(config["LED_SETTINGS"]["BRIGHTNESS"])
-            return_config.brightness = config["LED_SETTINGS"]["BRIGHTNESS"].as<uint8_t>();
-        if(config["LED_SETTINGS"]["GAMMA_CORRECTION"])
-            return_config.gamma_correction = config["LED_SETTINGS"]["GAMMA_CORRECTION"].as<float>();
-    }
+        if(config["LED_SETTINGS"]){
+            return_config.gpio_pin = config["LED_SETTINGS"]["GPIO_PIN"].as<int>();
+            return_config.width = config["LED_SETTINGS"]["WIDTH"].as<int>();
+            return_config.height = config["LED_SETTINGS"]["HEIGHT"].as<int>();
 
-    if(config["AUDIO_SETTINGS"]){
-        return_config.alsa_input_device = config["AUDIO_SETTINGS"]["ALSA_INPUT_DEVICE"].as<std::string>();
-
-        if(config["AUDIO_SETTINGS"]["FREQUENCY_BANDS"]){
-            uint num_bands = config["AUDIO_SETTINGS"]["FREQUENCY_BANDS"].as<uint>();
-            if(config["AUDIO_SETTINGS"]["BAND_CUTOFF_FREQUENCIES"].size() != num_bands + 1){
-                throw std::runtime_error("BAND_CUTOFF_FREQUENCIES needs to give one more cutoff frequency than the number of bands.");
-            }
-
-            return_config.frequency_bands.clear();
-            for(YAML::Node cutoff_freq : config["AUDIO_SETTINGS"]["BAND_CUTOFF_FREQUENCIES"]){
-                return_config.frequency_bands.push_back(cutoff_freq.as<float>());
-            }
+            if(config["LED_SETTINGS"]["DMA"])
+                return_config.dma = config["LED_SETTINGS"]["DMA"].as<int>();
+            if(config["LED_SETTINGS"]["BRIGHTNESS"])
+                return_config.brightness = config["LED_SETTINGS"]["BRIGHTNESS"].as<uint8_t>();
+            if(config["LED_SETTINGS"]["GAMMA_CORRECTION"])
+                return_config.gamma_correction = config["LED_SETTINGS"]["GAMMA_CORRECTION"].as<float>();
         }
 
-        if(config["AUDIO_SETTINGS"]["CHANNELS"])
-            return_config.channels = config["AUDIO_SETTINGS"]["CHANNELS"].as<int>();
+        if(config["AUDIO_SETTINGS"]){
+            return_config.alsa_input_device = config["AUDIO_SETTINGS"]["ALSA_INPUT_DEVICE"].as<std::string>();
 
-        if(config["AUDIO_SETTINGS"]["SAMPLE_RATE"])
-            return_config.sample_rate = config["AUDIO_SETTINGS"]["SAMPLE_RATE"].as<int>();
+            if(config["AUDIO_SETTINGS"]["FREQUENCY_BANDS"]){
+                uint num_bands = config["AUDIO_SETTINGS"]["FREQUENCY_BANDS"].as<uint>();
+                if(config["AUDIO_SETTINGS"]["BAND_CUTOFF_FREQUENCIES"].size() != num_bands + 1){
+                    throw std::runtime_error("BAND_CUTOFF_FREQUENCIES needs to give one more cutoff frequency than the number of bands.");
+                }
 
-        if(config["AUDIO_SETTINGS"]["SAMPLES_PER_PIXEL"])
-            return_config.samples_per_pixel = config["AUDIO_SETTINGS"]["SAMPLES_PER_PIXEL"].as<int>();
+                return_config.frequency_bands.clear();
+                for(YAML::Node cutoff_freq : config["AUDIO_SETTINGS"]["BAND_CUTOFF_FREQUENCIES"]){
+                    return_config.frequency_bands.push_back(cutoff_freq.as<float>());
+                }
+            }
 
-        if(config["AUDIO_SETTINGS"]["PIXELS_PER_BAND"])
-            return_config.pixels_per_band = config["AUDIO_SETTINGS"]["PIXELS_PER_BAND"].as<int>();
+            if(config["AUDIO_SETTINGS"]["CHANNELS"])
+                return_config.channels = config["AUDIO_SETTINGS"]["CHANNELS"].as<int>();
+
+            if(config["AUDIO_SETTINGS"]["SAMPLE_RATE"])
+                return_config.sample_rate = config["AUDIO_SETTINGS"]["SAMPLE_RATE"].as<int>();
+
+            if(config["AUDIO_SETTINGS"]["SAMPLES_PER_PIXEL"])
+                return_config.samples_per_pixel = config["AUDIO_SETTINGS"]["SAMPLES_PER_PIXEL"].as<int>();
+
+            if(config["AUDIO_SETTINGS"]["PIXELS_PER_BAND"])
+                return_config.pixels_per_band = config["AUDIO_SETTINGS"]["PIXELS_PER_BAND"].as<int>();
+        }
+
+        if(config["ROTARY_ENCODER"]){
+            return_config.encoder_pin_clk = config["ROTARY_ENCODER"]["PIN_CLK"].as<int>();
+            return_config.encoder_pin_dt = config["ROTARY_ENCODER"]["PIN_DT"].as<int>();
+
+            if(config["ROTARY_ENCODER"]["GPIOCHIP"])
+                return_config.encoder_gpiochip = config["ROTARY_ENCODER"]["GPIOCHIP"].as<std::string>();
+        }
+
+        return_config.shader_folder = config["SHADER_FOLDER"].as<std::string>();
     }
-
-    return_config.shader_folder = config["SHADER_FOLDER"].as<std::string>();
+    catch(const std::exception &e){
+        std::cerr << "Error loading config " << filename << ": " << e.what() << "\n";
+        return std::nullopt;
+    }
 
     return return_config;
 }

@@ -15,10 +15,10 @@ AUDIO_SETTINGS:
   SAMPLES_PER_PIXEL: 1024
   PIXELS_PER_BAND: 144
 
-# Optional: cycle through shaders with a KY-040 rotary encoder (BCM pin numbers)
-# ROTARY_ENCODER:
-#   PIN_CLK: 17
-#   PIN_DT: 27
-#   GPIOCHIP: /dev/gpiochip0
+# Cycle through shaders with a KY-040 rotary encoder (BCM pin numbers)
+ROTARY_ENCODER:
+  PIN_CLK: 17
+  PIN_DT: 27
+  GPIOCHIP: /dev/gpiochip0
 
-SHADER_FOLDER: ../shaders
+SHADER_FOLDER: /data/shaders

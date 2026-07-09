@@ -22,6 +22,10 @@ public:
     std::vector<float> frequency_bands;
     int channels = 1, sample_rate = 44100, samples_per_pixel = 1024, pixels_per_band = 144;
 
+    // Rotary encoder settings (BCM pin numbers, -1 = disabled)
+    int encoder_pin_clk = -1, encoder_pin_dt = -1;
+    std::string encoder_gpiochip = "/dev/gpiochip0";
+
     int num_bands(){ return frequency_bands.size() - 1; }
     float center_frequency(int band){ return frequency_bands[band] + (frequency_bands[band+1] - frequency_bands[band]) / 2.f; }
     float band_width(int band){ return frequency_bands[band+1] - frequency_bands[band]; }

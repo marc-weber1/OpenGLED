@@ -23,6 +23,7 @@
 
 #include "CircularBuffer.h"
 #include "OpenGLEDConfig.h"
+#include "RotaryEncoder.h"
 #include "Shader.h"
 
 #define STRIP_TYPE WS2811_STRIP_GBR // 00 BB GG RR
@@ -95,8 +96,9 @@ float convertS16LEToFloat(const char sample[2]) {
 int main(int argc, char* argv[]){
 
   // Check args to see if we are debugging or something
-  args::ArgParser arg_parser("Usage: open_gled [--debug-audio]", "1.0");
+  args::ArgParser arg_parser("Usage: open_gled [--debug-audio] [--config <path>]", "1.0");
   arg_parser.flag("debug-audio");
+  arg_parser.option("config", "../example-config.yaml");
 
   arg_parser.parse(argc, argv);
 
@@ -105,9 +107,10 @@ int main(int argc, char* argv[]){
 
   // Load config file
 
-  optional<OpenGLEDConfig> maybe_config = OpenGLEDConfig::FromFile("../example-config.yaml");
+  string config_path = arg_parser.value("config");
+  optional<OpenGLEDConfig> maybe_config = OpenGLEDConfig::FromFile(config_path.c_str());
   if(!maybe_config.has_value()){
-    cerr << "Failed to parse config file.\n";
+    cerr << "Failed to parse config file " << config_path << "\n";
     return 1;
   }
   OpenGLEDConfig config = maybe_config.value();
@@ -204,9 +207,6 @@ int main(int argc, char* argv[]){
     return 1;
   }
 
-  int current_shader = 0;
-  shaders[current_shader].use();
-
   // Setup the full screen VBO
 
   GLuint vbo;
@@ -214,19 +214,39 @@ int main(int argc, char* argv[]){
   glBindBuffer(GL_ARRAY_BUFFER, vbo);
   glBufferData(GL_ARRAY_BUFFER, 12 * sizeof(GLfloat), FULLSCREEN_BOX_VEC2, GL_STATIC_DRAW);
 
-  GLint posLoc = glGetAttribLocation(shaders[current_shader].ID, "pos"); // Also do this for the other shaders
-  glEnableVertexAttribArray(posLoc);
-  glVertexAttribPointer(posLoc, 2, GL_FLOAT, GL_FALSE, 2 * sizeof(float), (void *)0);
+  // Activating a shader rebinds its attributes and uniforms
 
-  // Get uniforms
+  GLint timeLoc = -1;
+
+  auto activate_shader = [&](int index){
+    shaders[index].use();
+
+    GLint posLoc = glGetAttribLocation(shaders[index].ID, "pos");
+    glEnableVertexAttribArray(posLoc);
+    glVertexAttribPointer(posLoc, 2, GL_FLOAT, GL_FALSE, 2 * sizeof(float), (void *)0);
+
+    timeLoc = glGetUniformLocation(shaders[index].ID, "time");
+
+    GLint resolutionLoc = glGetUniformLocation(shaders[index].ID, "resolution");
+    glUniform2f(resolutionLoc, (GLfloat) config.width, (GLfloat) config.height);
+  };
+
+  int current_shader = 0;
+  activate_shader(current_shader);
 
   timespec clock_start;
   clock_gettime(CLOCK_MONOTONIC, &clock_start);
-  GLint timeLoc = glGetUniformLocation(shaders[current_shader].ID, "time"); // Also do this for the other shaders
 
-  // Do this whole thing on shader initialization
-  GLint resolutionLoc = glGetUniformLocation(shaders[current_shader].ID, "resolution");
-  glUniform2f(resolutionLoc, (GLfloat) config.width, (GLfloat) config.height);
+  // Setup the rotary encoder for switching shaders
+
+  unique_ptr<RotaryEncoder> encoder;
+  if(config.encoder_pin_clk >= 0 && config.encoder_pin_dt >= 0){
+    encoder = make_unique<RotaryEncoder>(config.encoder_pin_clk, config.encoder_pin_dt, config.encoder_gpiochip);
+    if(!encoder->Initialize()){
+      cerr << "Rotary encoder setup failed, continuing without it.\n";
+      encoder.reset();
+    }
+  }
 
   // Setup buffer to copy pixel data to LEDs
 
@@ -266,6 +286,17 @@ int main(int argc, char* argv[]){
   }
 
   while(running){
+
+    // Switch shaders when the rotary encoder turns
+
+    if(encoder){
+      int delta = encoder->ReadDelta();
+      if(delta != 0){
+        int num_shaders = (int) shaders.size();
+        current_shader = ((current_shader + delta) % num_shaders + num_shaders) % num_shaders;
+        activate_shader(current_shader);
+      }
+    }
 
     // Calculate shader audio texture
 
