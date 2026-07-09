@@ -97,8 +97,25 @@ for cmd in "${!CMD_DESC[@]}"; do
 done
 
 # Perl modules that minimal perl installs (notably Fedora's) often lack,
-# but buildroot's host-automake/host tools need.
-for mod in Thread::Queue FindBin "ExtUtils::MakeMaker"; do
+# but buildroot's host tools need. Buildroot fails these late with a cryptic
+# "your perl installation is not complete enough", so check them up front.
+# (This is the set buildroot's autoconf/automake/host-libtool machinery pulls
+# in beyond bare perl.)
+PERL_MODULES=(
+    Thread::Queue
+    FindBin
+    ExtUtils::MakeMaker
+    Data::Dumper
+    IPC::Cmd
+    open
+    English
+    POSIX
+    File::Copy
+    File::Compare
+    Getopt::Long
+    Digest::SHA
+)
+for mod in "${PERL_MODULES[@]}"; do
     perl -M"$mod" -e1 >/dev/null 2>&1 || missing+=("perl module $mod")
 done
 
